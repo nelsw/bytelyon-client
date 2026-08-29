@@ -1,0 +1,75 @@
+{
+  "cookies": [
+    {
+      "name": "SEARCH_SAMESITE",
+      "value": "CgQI1qEB",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1803518638.078372,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "AEC",
+      "value": "AdJVEavPYYAA1BPZt4CfFD3t0AmubpWGPg52oMYvEvwdnNe6kY9F6UiwYJg",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1803518638.07841,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-STRP",
+      "value": "ANmZwa20ITPMqxAQzLF5kc3f7_chWsxhyeVu-rGrDxfX3DQWouuw1sLeQNYRk0cqgWY62AYZe1HQhx0DBr3zF1kZMTLTpb6lyg",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1787966940.163821,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "NID",
+      "value": "534=TDhaWPCC4IE1ZBQgOhN_CPVdJ24VvKHheX5pVmwhIUhsuEm3f_oPmmSOSB8fLyfbWHfnBdOCp2v7m2H-Neg3-BAzcmDBZqQ88V5H9KpJENlcT2aYTo5Ggx18P9oK6LhHV5_vcVo95HWPuT9zbz7Wovs-w7a0PHCdDTd5rRGkkiJlusdLNbLOFHODp9Tkr_w9U8MAhjHQQbtMOvt3pRDaECQkGm-oFVghc3A9BxsnB-vE4mhrqPWNCmaFMpF6oiqGR1SKKHQ4cW5cPKuFDA",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1803777837.943715,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://www.google.com",
+      "localStorage": [
+        {
+          "name": "sb_wiz.zpc.gws-wiz-serp.",
+          "value": "{\"0\":[],\"1\":{\"av\":\"8764815292258180978\",\"k\":1}}"
+        },
+        {
+          "name": "sb_wiz.sr_di",
+          "value": "GOvogZy0wLrlfRjEnqD1ptqxq-MBGOLu2Pzyiu-L8gEY3sqq-Nzw4MV-GJavpbr3vvjVJg"
+        },
+        {
+          "name": "sb_wiz.pq_tm_hp",
+          "value": "1787966641831"
+        },
+        {
+          "name": "sb_wiz.qc",
+          "value": "1"
+        },
+        {
+          "name": "sb_wiz.sc_pq",
+          "value": ""
+        },
+        {
+          "name": "sb_wiz.pq",
+          "value": "trimaran for sale"
+        }
+      ]
+    }
+  ]
+}
