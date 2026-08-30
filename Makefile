@@ -23,13 +23,15 @@ lint:
 	@make ƒç name=lint
 test: deps
 	@make ƒø name=test
-	go test -v ./...
+	@go test -v ./...
 	@make ƒç name=test
 richtest: deps
 	@make ƒø name=richtest
-	richgo test -v ./...
+	@richgo test -v ./...
 	@make ƒç name=richtest
 deps:
 	@make ƒø name=deps
+	@go mod tidy
 	@go get -v ./...
+	@go mod tidy
 	@make ƒç name=deps
