@@ -12,24 +12,28 @@ import (
 )
 
 const (
-	Reset             = "\033[0m"
-	Default           = Reset
-	Red               = "\033[0;31m"
-	Green             = "\033[0;32m"
-	Purple            = "\033[0;35m"
-	Cyan              = "\033[0;36m"
-	White             = "\033[0;37m"
-	RedBackground     = "\033[41m"
-	YellowBoldIntense = "\033[1;93m"
-	BlueBoldIntense   = "\033[1;94m"
-	WhiteBoldIntense  = "\033[1;97m"
+	Reset   = "\033[0m"
+	Default = Reset
+	Red     = "\033[0;31m"
+	Green   = "\033[0;32m"
+	Yellow  = "\033[0;33m"
+	Purple  = "\033[0;35m"
+	Cyan    = "\033[0;36m"
+	White   = "\033[0;37m"
+	RedBG   = "\033[41m"
 )
+
+var f *os.File
 
 func init() {
 	Init(zerolog.TraceLevel.String())
 }
 
 func Init(args ...string) {
+	var err error
+	if f, err = os.Create(time.Now().UTC().Format(time.RFC3339) + ".log"); err != nil {
+		panic(err)
+	}
 	log.Logger = MakeZerolog(args...)
 }
 
@@ -45,9 +49,9 @@ func MakeZerolog(args ...string) zerolog.Logger {
 		lvl = zerolog.TraceLevel
 	}
 
-	logger := zerolog.New(zerolog.ConsoleWriter{
+	logger := zerolog.New(zerolog.MultiLevelWriter(f, zerolog.ConsoleWriter{
 		Out:        os.Stdout,
-		TimeFormat: time.TimeOnly,
+		TimeFormat: time.Kitchen,
 		FieldsOrder: []string{
 			"#", "id",
 			"t", "type",
@@ -59,7 +63,7 @@ func MakeZerolog(args ...string) zerolog.Logger {
 			}
 			switch l := strings.ToUpper(a.(string)[:3]); l {
 			case "NIL":
-				return WhiteBoldIntense + " 🦁" + Default
+				return Default + " 🦁" + Default
 			case "TRA":
 				return Cyan + l + Default
 			case "DEB":
@@ -67,16 +71,16 @@ func MakeZerolog(args ...string) zerolog.Logger {
 			case "INF":
 				return Green + l + Default
 			case "WAR":
-				return "\033[0;5m" + l + Default
+				return Yellow + l + Default
 			case "ERR":
 				return Red + l + Default
 			case "FAT", "PAN":
-				return RedBackground + White + l + Default
+				return RedBG + White + l + Default
 			default:
 				return Default + l + Default
 			}
 		},
-	}).Level(lvl).With().Timestamp().Logger()
+	})).Level(lvl).With().Timestamp().Logger()
 
 	if lvl == zerolog.TraceLevel {
 		return logger.With().Caller().Logger()
@@ -105,21 +109,4 @@ func NewSlog() *slog.Logger {
 		Level:  sl,
 		Logger: new(MakeZerolog()),
 	}.NewZerologHandler())
-}
-
-func PrintBanner() {
-	println(strings.Join([]string{
-		"\n",
-		YellowBoldIntense + `* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
-		YellowBoldIntense + `*                                                                           * `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ██████╗ ██╗   ██╗████████╗███████╗██╗  ██╗   ██╗ ██████╗ ███╗   ██╗    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ██╔══██╗╚██╗ ██╔╝╚══██╔══╝██╔════╝██║  ╚██╗ ██╔╝██╔═══██╗████╗  ██║    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ██████╔╝ ╚████╔╝    ██║   █████╗  ██║   ╚████╔╝ ██║   ██║██╔██╗ ██║    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ██╔══██╗  ╚██╔╝     ██║   ██╔══╝  ██║    ╚██╔╝  ██║   ██║██║╚██╗██║    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ██████╔╝   ██║      ██║   ███████╗███████╗██║   ╚██████╔╝██║ ╚████║    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*` + BlueBoldIntense + `    ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚══════╝╚═╝    ╚═════╝ ╚═╝  ╚═══╝    ` + YellowBoldIntense + `* `,
-		YellowBoldIntense + `*                                                                           * `,
-		YellowBoldIntense + `* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
-		"\n",
-	}, "\n") + Reset)
 }
