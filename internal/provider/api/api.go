@@ -15,9 +15,6 @@ var (
 )
 
 func Init(url, key string) {
-	if key == "" {
-		log.Fatal().Msg("no api key provided")
-	}
 	uri = url + "/api"
 	hdr = map[string][]string{
 		"Authorization": {"Bearer " + key},
@@ -56,7 +53,7 @@ func Put(a any, paths ...any) int {
 }
 
 func Post(img []byte, fileName, fieldName string, paths ...any) {
-	if err := http.PostFile(url(paths), fileName, fieldName, img, hdr); err != nil {
+	if err := http.PostFile(url(paths), fieldName, fileName, img, hdr); err != nil {
 		log.Err(err).Msg("failed to POST")
 	}
 }
