@@ -1,11 +1,8 @@
 package main
 
 import (
+	"bytelyon-client/internal/config"
 	"bytelyon-client/internal/model"
-	"bytelyon-client/internal/provider/api"
-	"bytelyon-client/internal/provider/logs"
-	"bytelyon-client/internal/provider/play"
-	"flag"
 	"fmt"
 	"maps"
 	"os"
@@ -16,45 +13,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func init() {
-	var lvl, url, key string
-	flag.StringVar(&lvl, "log", "debug", "log level trace->disabled")
-	flag.StringVar(&url, "url", "https://bytelyon.com", "web app api url")
-	flag.StringVar(&key, "key", "", "client api key")
-	flag.Parse()
-
-	logs.Init(lvl)
-	api.Init(url, key)
-	play.Init()
-
-	logs.PrintBanner()
-}
-
 func main() {
+
+	config.FromCLI()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	todo := make(map[int]*model.Bot)
-
-	ƒ := func(bot *model.Bot) {
-		log.Log().EmbedObject(bot).Msg("working...")
-		defer func() {
-			bot.Save()
-			delete(todo, bot.ID)
-		}()
-
-		log.Info().EmbedObject(bot).Send()
-
-		switch bot.Type {
-		case model.NewsBot:
-			model.NewNews(bot).Do()
-		case model.SearchBot:
-			model.NewSearch(bot).Do()
-		case model.SitemapBot:
-			model.NewSitemap(bot).Do()
-		}
-	}
 
 	poller := time.NewTicker(10 * time.Second)
 
@@ -75,7 +41,8 @@ func main() {
 			}
 		default:
 			for key := range maps.Keys(todo) {
-				ƒ(todo[key])
+				todo[key].Do()
+				delete(todo, key)
 			}
 		}
 	}
