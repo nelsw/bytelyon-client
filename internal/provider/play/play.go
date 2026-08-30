@@ -4,10 +4,12 @@ import (
 	"bytelyon-client/internal/provider/logs"
 	_ "embed"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mxschmitt/playwright-go"
 	"github.com/rs/zerolog/log"
@@ -345,9 +347,11 @@ func SearchGoogle(q string, ctx playwright.BrowserContext) (page playwright.Page
 		return
 	}
 
-	if IsRequestBlocked(resp) || IsPageBlocked(page) {
-		if err = WaitForLoadState(page); err != nil || IsRequestBlocked(resp) || IsPageBlocked(page) {
-			return
+	for waits, bad := 0, IsRequestBlocked(resp) || IsPageBlocked(page); bad; waits++ {
+		time.Sleep(time.Second * 10)
+		bad = WaitForLoadState(page) != nil || IsRequestBlocked(resp) || IsPageBlocked(page)
+		if waits > 3 {
+			return nil, errors.New("good going ... you blocked yourself")
 		}
 	}
 
