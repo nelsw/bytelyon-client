@@ -86,7 +86,8 @@ func TestQueue(t *testing.T) {
 
 func TestSitemap(t *testing.T) {
 
-	s := NewSitemap("autonation.com")
+	b := &Bot{Query: "autonation.com"}
+	s := NewSitemap(b)
 	play.It(false, func(ctx playwright.BrowserContext) {
 		s.Build(ctx)
 	})

@@ -52,19 +52,21 @@ func (s *Search) Save() {
 	}
 }
 
-func (s *Search) Do(x playwright.BrowserContext) {
-	serpPage, err := play.SearchGoogle(s.Query, x)
-	if err != nil {
-		return
-	}
-	s.ScreenshotData = play.Screenshot(serpPage)
-	s.doSimilarQueries(serpPage)
-	s.doSponsoredProducts(x, play.Locators(serpPage, "[data-dtld]"))
-	s.doSponsoredResults(x, play.Locators(serpPage, "[data-pcu]"))
-	s.doOrganicResults(x, play.Locators(serpPage, "h3[id]"))
-	s.doOrganicProducts(x, serpPage)
-	s.Save()
-	_ = serpPage.Close()
+func (s *Search) Do() {
+	play.It(s.Bot.Headless, func(ctx playwright.BrowserContext) {
+		serpPage, err := play.SearchGoogle(s.Query, ctx)
+		if err != nil {
+			return
+		}
+		s.ScreenshotData = play.Screenshot(serpPage)
+		s.doSimilarQueries(serpPage)
+		s.doSponsoredProducts(ctx, play.Locators(serpPage, "[data-dtld]"))
+		s.doSponsoredResults(ctx, play.Locators(serpPage, "[data-pcu]"))
+		s.doOrganicResults(ctx, play.Locators(serpPage, "h3[id]"))
+		s.doOrganicProducts(ctx, serpPage)
+		s.Save()
+		_ = serpPage.Close()
+	})
 }
 
 func (s *Search) doSponsoredProducts(x playwright.BrowserContext, ll []playwright.Locator) {

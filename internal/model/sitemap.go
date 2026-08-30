@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytelyon-client/internal/provider/api"
 	"bytelyon-client/internal/provider/play"
 	"bytelyon-client/internal/util/url"
 	"path"
@@ -48,35 +49,38 @@ type Scrape struct {
 	screenshot []byte
 }
 
-type Option func(*Sitemap)
+func NewSitemap(b *Bot, opts ...int) *Sitemap {
+	d, p := defaultDepth, defaultParallel
+	if len(opts) > 0 {
+		d = opts[0]
+		if len(opts) > 1 {
+			p = opts[1]
+		}
+	}
 
-// WithBot identifies the parent bot of the sitemap.
-func WithBot(b *Bot) Option { return func(s *Sitemap) { s.Bot = b } }
-
-// WithID identifies the unique identifier of the sitemap.
-func WithID(id int) Option { return func(s *Sitemap) { s.ID = id } }
-
-// WithDepth limits how many links deep the crawl follows.
-func WithDepth(d int) Option { return func(s *Sitemap) { s.D = d } }
-
-// WithParallelism limits how many pages are crawled at once.
-func WithParallelism(n int) Option { return func(s *Sitemap) { s.P = n } }
-
-func NewSitemap(domain string, opts ...Option) *Sitemap {
-	s := &Sitemap{
-		Domain: domain,
-		U:      "https://" + domain,
+	return &Sitemap{
+		Bot:    b,
+		Domain: b.Query,
+		U:      "https://" + b.Query,
 		Set:    NewSet[string](),
-		D:      defaultDepth,
-		P:      defaultParallel,
+		D:      d,
+		P:      p,
 	}
-	for _, opt := range opts {
-		opt(s)
-	}
-	return s
 }
 
-//func (s *Sitemap) Save() { api.Put(s, "bots", s.BotID, "sitemaps") }
+func (s *Sitemap) Save() {
+	a := map[string][]string{
+		"urls": s.Set.Keys(),
+	}
+	api.Put(a, "bots", s.Bot.ID, "sitemaps")
+}
+
+func (s *Sitemap) Do() {
+	play.It(false, func(ctx playwright.BrowserContext) {
+		s.Build(ctx)
+		s.Save()
+	})
+}
 
 // Build walks the domain from its root, fetching at most P pages at a time, and
 // records every url it reaches. It returns once nothing is left to visit.

@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mxschmitt/playwright-go"
 	"github.com/rs/zerolog/log"
 )
 
@@ -40,25 +39,21 @@ func main() {
 	todo := make(map[int]*model.Bot)
 
 	ƒ := func(bot *model.Bot) {
+
 		defer func() {
 			bot.Save()
 			delete(todo, bot.ID)
 		}()
+
 		log.Info().EmbedObject(bot).Send()
+
 		switch bot.Type {
 		case model.NewsBot:
 			model.NewNews(bot).Do()
 		case model.SearchBot:
-
+			model.NewSearch(bot).Do()
 		case model.SitemapBot:
-			s := model.NewSitemap(bot.Query,
-				model.WithID(bot.ChildID),
-				model.WithDepth(5),
-				model.WithParallelism(25),
-			)
-			play.It(false, func(ctx playwright.BrowserContext) {
-				s.Build(ctx)
-			})
+			model.NewSitemap(bot).Do()
 		}
 	}
 
