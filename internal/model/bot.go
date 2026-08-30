@@ -43,6 +43,18 @@ const (
 	SitemapBot BotType = "sitemap"
 )
 
+func (t *BotType) Class() string {
+	switch *t {
+	case NewsBot:
+		return "App\\Models\\Article"
+	case SearchBot:
+		return "App\\Models\\Serp"
+	case SitemapBot:
+		return "App\\Models\\Sitemap"
+	}
+	return "unkown"
+}
+
 func (t *BotType) UnmarshalJSON(payload []byte) error {
 	if text := string(payload); text == `"news"` || text == `"search"` || text == `"sitemap"` {
 		*t = BotType(strings.ReplaceAll(text, `"`, ""))

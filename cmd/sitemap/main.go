@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	s := model.NewSitemap(domain,
-		model.WithBotID(999),
+		model.WithID(999),
 		model.WithDepth(depth),
 		model.WithParallelism(parallel),
 	)

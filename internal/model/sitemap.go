@@ -17,7 +17,8 @@ const (
 )
 
 type Sitemap struct {
-	BotID  int    `json:"-"`
+	Bot    *Bot   `json:"-"`
+	ID     int    `json:"-"`
 	Domain string `json:"-"`
 	U      string `json:"-"`
 
@@ -49,8 +50,11 @@ type Scrape struct {
 
 type Option func(*Sitemap)
 
-// WithBotID identifies the bot this sitemap belongs to.
-func WithBotID(id int) Option { return func(s *Sitemap) { s.BotID = id } }
+// WithBot identifies the parent bot of the sitemap.
+func WithBot(b *Bot) Option { return func(s *Sitemap) { s.Bot = b } }
+
+// WithID identifies the unique identifier of the sitemap.
+func WithID(id int) Option { return func(s *Sitemap) { s.ID = id } }
 
 // WithDepth limits how many links deep the crawl follows.
 func WithDepth(d int) Option { return func(s *Sitemap) { s.D = d } }
@@ -167,6 +171,9 @@ func (s *Sitemap) Scrape() {
 			s.pending.Done()
 			continue
 		}
+
+		// save it!
+		go NewSitemapPage(s.Bot, x.url, doc, x.screenshot).Save()
 
 		s.Update(x.url, true)
 
