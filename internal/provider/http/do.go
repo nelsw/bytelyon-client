@@ -49,7 +49,7 @@ func do(method, URL string, body any, header http.Header) (b []byte, code int, e
 		req.Header = header
 	}
 
-	if method == http.MethodPost || method == http.MethodPut {
+	if req.Header.Get("Content-Type") == "" && (method == http.MethodPost || method == http.MethodPut) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
