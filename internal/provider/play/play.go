@@ -20,7 +20,7 @@ var (
 	stateData []byte
 
 	pwc *playwright.Playwright
-
+	//hi lauren
 	blockedRegex = regexp.MustCompile(`(google.com/sorry|captcha|unusual traffic)`)
 
 	searchSelectors = []string{
@@ -191,7 +191,7 @@ func IsRequestBlocked(res playwright.Response) bool {
 // Type fills text to type into a focused element.
 func Type(page playwright.Page, s string) error {
 	return page.Keyboard().Type(s, playwright.KeyboardTypeOptions{
-		Delay: delay(200, 350),
+		Delay: delay(50, 150),
 	})
 }
 
