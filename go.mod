@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
 	github.com/mxschmitt/playwright-go v0.6201.1
 	github.com/rs/zerolog v1.35.1
 	github.com/samber/slog-zerolog/v2 v2.9.2
