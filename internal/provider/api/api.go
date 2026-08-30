@@ -18,7 +18,7 @@ func Init(url, key string) {
 	}
 }
 
-func url(parts ...any) string {
+func url(parts []any) string {
 	var out strings.Builder
 	out.WriteString(uri)
 	for _, part := range parts {

@@ -37,7 +37,7 @@ type Doc struct {
 	title       *string
 }
 
-func Parse(s string) (doc *Doc, err error) {
+func NewDoc(s string) (doc *Doc, err error) {
 	doc = new(Doc)
 	if doc.Node, err = html.Parse(strings.NewReader(s)); err == nil {
 		doc.Document = goquery.NewDocumentFromNode(doc.Node)
@@ -178,6 +178,16 @@ func (d *Doc) Body() string {
 	}
 
 	return *d.body
+}
+
+func (d *Doc) HREFs() []string {
+	x := make(map[string]bool)
+	d.Find("a").Each(func(i int, s *goquery.Selection) {
+		if href, ok := s.Attr("href"); ok {
+			x[href] = true
+		}
+	})
+	return slices.Collect(maps.Keys(x))
 }
 
 // extractText recursively wanders through the HTML nodes

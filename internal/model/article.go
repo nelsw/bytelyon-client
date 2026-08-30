@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Articles []*Article
@@ -53,11 +54,12 @@ func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 }
 
 func (a *Article) Save() {
-	api.Put("bots", a.Bot.ID, "articles", a)
+	log.Info().EmbedObject(a).Msg("saving article")
+	api.Put(a, "bots", a.Bot.ID, "articles")
 }
 
 func (a *Article) Fill(content string) {
-	doc, err := Parse(content)
+	doc, err := NewDoc(content)
 	if err != nil {
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -21,51 +22,15 @@ const (
 	RedBG  = "\033[41m"
 )
 
+func init() {
+	Init(zerolog.TraceLevel.String())
+}
+
 func Init(args ...string) {
 	log.Logger = MakeZerolog(args...)
 }
 
 func MakeZerolog(args ...string) zerolog.Logger {
-
-	l := log.Output(zerolog.ConsoleWriter{
-		Out: os.Stdout,
-		FormatLevel: func(a any) string {
-			if a == nil {
-				a = "info"
-			}
-			switch l := strings.ToUpper(a.(string)[:3]); l {
-			case "TRA":
-				return Cyan + l + Reset
-			case "DEB":
-				return Purple + l + Reset
-			case "INF":
-				return Green + l + Reset
-			case "WAR":
-				return Yellow + l + Reset
-			case "ERR":
-				return Red + l + Reset
-			case "FAT", "PAN":
-				return RedBG + White + l + Reset
-			default:
-				return Reset + l + Reset
-			}
-		},
-		FieldsOrder: []string{
-			"request", "response",
-			"ƒ",
-			"ready",
-			"userId", "botId", "id",
-			"type", "botType",
-			"target",
-			"size",
-			"table",
-			"domain",
-			"method", "authorization", "path", "query",
-			"code",
-			"body",
-			"isAuthorized", "context",
-		},
-	})
 
 	var lvlStr string
 	if len(args) > 0 {
@@ -74,14 +39,45 @@ func MakeZerolog(args ...string) zerolog.Logger {
 
 	lvl, err := zerolog.ParseLevel(lvlStr)
 	if err != nil {
-		lvl = zerolog.DebugLevel
+		lvl = zerolog.TraceLevel
 	}
 
-	if l = l.Level(lvl); lvl == zerolog.TraceLevel {
-		l = l.With().Caller().Logger()
+	logger := zerolog.New(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: time.Kitchen,
+		FieldsOrder: []string{
+			"#", "id",
+			"t", "type",
+			"q", "query",
+		},
+		FormatLevel: func(a any) string {
+			if a == nil || a == "<nil>" {
+				a = "   "
+			}
+			switch l := strings.ToUpper(a.(string)[:3]); l {
+			case "TRA":
+				return "\033[0;36m" + l + "\033[0m"
+			case "DEB":
+				return "\033[0;35m" + l + "\033[0m"
+			case "INF":
+				return "\033[0;32m" + l + "\033[0m"
+			case "WAR":
+				return "\033[0;33m" + l + "\033[0m"
+			case "ERR":
+				return "\033[0;31m" + l + "\033[0m"
+			case "FAT", "PAN":
+				return "\033[41m" + "\033[0;37m" + l + "\033[0m"
+			default:
+				return ""
+			}
+		},
+	}).Level(lvl).With().Timestamp().Logger()
+
+	if lvl == zerolog.TraceLevel {
+		return logger.With().Caller().Logger()
 	}
 
-	return l
+	return logger
 }
 
 func NewSlog() *slog.Logger {

@@ -16,12 +16,13 @@ var client = http.Client{Timeout: 10 * time.Second}
 
 func do(method, URL string, body any, header http.Header) (b []byte, code int, err error) {
 
-	l := log.With().
+	ctx := log.With().
 		Str("ƒ", method).
-		Str("domain", url.Domain(URL)).
-		Str("path", url.Path(URL)).
-		Any("query", url.Query(URL)).
-		Logger()
+		Str("domain", url.Domain(URL)).Str("path", url.Path(URL))
+	if q := url.Query(URL); len(q) > 0 {
+		ctx = ctx.Any("query", q)
+	}
+	l := ctx.Logger()
 
 	l.Trace().Send()
 

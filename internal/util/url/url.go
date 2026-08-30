@@ -16,7 +16,7 @@ var (
 	browserFunction = regexp.MustCompile(`^(mailto|tel|sms|fax|callto|geo|javascript|about):.*`)
 )
 
-func removeProtocol(url string) string {
+func RemoveProtocol(url string) string {
 	url = Clean(url)
 	url = strings.TrimPrefix(url, "http://")
 	url = strings.TrimPrefix(url, "https://")
@@ -37,7 +37,7 @@ func Clean(url string) string {
 // Unlink url.Parse, this ƒ does not require a protocol to determine a hostname.
 func Domain(url string) string {
 
-	url = removeProtocol(url)
+	url = RemoveProtocol(url)
 
 	// remove path
 	url = strings.Split(url, "/")[0]
@@ -78,7 +78,7 @@ func Query(u string) map[string]string {
 }
 
 func Path(url string) (s string) {
-	url = removeProtocol(url)
+	url = RemoveProtocol(url)
 	_, s, _ = strings.Cut(url, "/")
 	s, _, _ = strings.Cut(s, "?")
 	return

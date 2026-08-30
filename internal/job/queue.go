@@ -4,56 +4,47 @@ import (
 	"bytelyon-client/internal/model"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Queue struct {
-	x sync.Mutex
+	s *model.Set[int]
 	g sync.WaitGroup
-	m map[int]bool
 	c chan *model.Bot
 	t *time.Ticker
 }
 
-func NewQueue() *Queue {
-	return &Queue{
-		m: make(map[int]bool),
+func StartQueue() *Queue {
+	q := &Queue{
+		s: model.NewSet[int](),
 		c: make(chan *model.Bot),
 		t: time.NewTicker(15 * time.Second),
 	}
+
+	for range 3 {
+		q.g.Go(func() {
+			for b := range q.c {
+				Do(b)
+				q.s.Delete(b.ID)
+			}
+		})
+	}
+
+	return q
 }
 
 func (q *Queue) Poll() {
-	q.x.Lock()
-	defer q.x.Unlock()
+	log.Log().Msg(`💈 polling`)
 	for _, b := range model.GetBots() {
-		if _, ok := q.m[b.ID]; !ok {
+		if q.s.Put(b.ID, true) {
 			q.c <- b
 		}
 	}
 }
 
-func (q *Queue) PollInterval() <-chan time.Time {
+func (q *Queue) PollChan() <-chan time.Time {
 	return q.t.C
-}
-
-func (q *Queue) Start() {
-
-	ƒ := func(b *model.Bot) {
-
-		defer func() {
-			q.x.Lock()
-			delete(q.m, b.ID)
-			q.x.Unlock()
-		}()
-
-		Do(b)
-	}
-
-	for range 3 {
-		for b := range q.c {
-			ƒ(b)
-		}
-	}
 }
 
 func (q *Queue) Stop() {
