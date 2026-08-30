@@ -1,13 +1,8 @@
-package news
+package model
 
 import (
-	"bytelyon-client/internal/model"
-	"bytelyon-client/internal/provider/http"
 	"bytelyon-client/internal/util/url"
 	"encoding/xml"
-	"fmt"
-	"strings"
-	"time"
 )
 
 type BingLink string
@@ -45,27 +40,4 @@ type BingItem struct {
 
 	// Image GoogleLink of a news article thumbnail
 	Image string `xml:"Image"`
-}
-
-func DoBing(c chan *model.Article, bot *model.Bot) {
-
-	q := strings.ReplaceAll(bot.Query, " ", "+")
-	u := fmt.Sprintf("https://www.bing.com/news/search?format=rss&q=%s", q)
-
-	for _, item := range http.GetXML[RSS[BingItem]](u).Channel.Items {
-		a := &model.Article{
-			Bot:         bot,
-			Title:       item.Title,
-			URL:         string(item.Link),
-			PublishedAt: time.Time(item.PubDate),
-			Description: item.Description,
-			Publisher:   item.Source,
-			ImgURL:      item.Image,
-			Source:      "Bing News",
-		}
-
-		if a.OK() {
-			c <- a
-		}
-	}
 }

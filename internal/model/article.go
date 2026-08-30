@@ -5,10 +5,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
-type Articles []*Article
 type Article struct {
 
 	// Bot of a news article
@@ -54,7 +52,6 @@ func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 }
 
 func (a *Article) Save() {
-	log.Info().EmbedObject(a).Msg("saving article")
 	api.Put(a, "bots", a.Bot.ID, "articles")
 }
 
@@ -79,5 +76,5 @@ func (a *Article) Fill(content string) {
 }
 
 func (a *Article) OK() bool {
-	return a.Bot.LastRunAt.Before(a.PublishedAt) && a.Bot.Blacklist.OK(a.Title)
+	return a.Bot.PlayedAt.Before(a.PublishedAt) && a.Bot.Blacklist.OK(a.Title)
 }

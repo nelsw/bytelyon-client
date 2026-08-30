@@ -18,14 +18,11 @@ type Page struct {
 	// Title of the page.
 	Title string `json:"title"`
 
-	// ScreenshotKey is the full s3 key for the screenshot.
-	ScreenshotKey string `json:"screenshot_key"`
-
-	// ScreenshotData is compressed bytes of a full-page screenshot.
-	ScreenshotData []byte `json:"screenshot_data"`
-
 	// Meta tags of the page.
-	Meta map[string][]string `json:"meta"`
+	Meta `json:"meta"`
+
+	// Screenshot of the page.
+	Screenshot
 
 	// ParentType is the type of page (Serp or Sitemap).
 	ParentType string `json:"pageable_type"`
@@ -40,43 +37,27 @@ type Page struct {
 	Kind string `json:"kind"`
 }
 
-func NewSitemapPage(b *Bot, URL string, doc *Doc, img []byte) *Page {
+func NewPage(b *Bot, URL string, doc *Doc, img []byte, idx int, knd string) *Page {
 	return &Page{
 		URL:            URL,
 		Domain:         url.Domain(URL),
 		Title:          doc.Title(),
+		Meta:           doc.Meta(),
 		ScreenshotData: img,
-		ScreenshotKey:  fmt.Sprintf("sitemap/%d/%s/screenshot.png", b.ID, uuid.FromURL(URL)),
-		ParentType:     "App\\Models\\Sitemap",
-		ParentID:       b.SitemapID,
+		ScreenshotKey:  fmt.Sprintf("%s/%d/%s/screenshot.png", b.Type, b.ID, uuid.FromURL(URL)),
+		ParentType:     b.Type.Class(),
+		ParentID:       b.ChildID,
+		Index:          idx,
+		Kind:           knd,
 	}
-}
-
-func (p *Page) Fill(b *Bot, URL string, doc *Doc, img []byte) {
-
-	// define the primitives
-	p.URL = URL
-	p.Title = doc.Title()
-	p.ScreenshotData = img
-	p.Domain = url.Domain(URL)
-
-	// define the parent type, ID
-	if b.Type == SearchBot {
-		p.ParentID = b.SearchID
-		p.ParentType = "App\\Models\\Serp"
-	} else {
-		p.ParentID = b.SitemapID
-		p.ParentType = "App\\Models\\Sitemap"
-	}
-
-	// last but not least - the screenshot key
-	p.ScreenshotKey = fmt.Sprintf("%s/%s/%d/%s/screenshot.png", b.Type, b.Query, p.ParentID, uuid.FromURL(p.URL))
 }
 
 func (p *Page) Save() {
+	var id int
 	if p.ParentType == "App\\Models\\Sitemap" {
-		api.Put(p, "sitemaps", p.ParentID, "page")
+		id = api.Put(p, "sitemaps", p.ParentID, "pages")
 	} else {
-		api.Put(p, "searches", p.ParentID, "page")
+		id = api.Put(p, "searches", p.ParentID, "pages")
 	}
+	p.Screenshot.Save("pages", id)
 }

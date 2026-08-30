@@ -28,11 +28,15 @@ func do(method, URL string, body any, header http.Header) (b []byte, code int, e
 
 	var buf io.Reader
 	if body != nil {
-		if b, err = json.Marshal(&body); err != nil {
-			l.Err(err).Any("body", body).Msg("failed to marshal body")
-			return
+		if v, ok := body.(io.Reader); ok {
+			buf = v
+		} else {
+			if b, err = json.Marshal(&body); err != nil {
+				l.Err(err).Any("body", body).Msg("failed to marshal body")
+				return
+			}
+			buf = bytes.NewBuffer(b)
 		}
-		buf = bytes.NewBuffer(b)
 	}
 
 	var req *http.Request

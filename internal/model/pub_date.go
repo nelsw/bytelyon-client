@@ -1,17 +1,9 @@
-package news
+package model
 
 import (
 	"encoding/xml"
 	"time"
 )
-
-type RSS[T any] struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel struct {
-		XMLName xml.Name `xml:"channel"`
-		Items   []T      `xml:"item"`
-	} `xml:"channel"`
-}
 
 // PubDate wraps time.Time to add custom unmarshaling logic
 type PubDate time.Time

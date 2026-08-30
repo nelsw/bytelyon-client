@@ -1,7 +1,6 @@
-package news
+package model
 
 import (
-	"bytelyon-client/internal/model"
 	"bytelyon-client/internal/provider/http"
 	"bytelyon-client/internal/util/url"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/html"
@@ -139,23 +137,4 @@ func decodeGoogleLink(link string) (URL string) {
 		l.Debug().Str("url", URL).Msg("decoded gstatic url")
 	}
 	return
-}
-
-func DoGoogle(c chan *model.Article, bot *model.Bot) {
-
-	q := strings.ReplaceAll(bot.Query, " ", "+")
-	u := fmt.Sprintf("https://news.google.com/rss/search?q=%s&hl=en-US&gl=US&ceid=US:en", q)
-
-	for _, item := range http.GetXML[RSS[GoogleItem]](u).Channel.Items {
-		a := &model.Article{
-			Bot:         bot,
-			Title:       string(item.Title),
-			URL:         string(item.Link),
-			PublishedAt: time.Time(item.PubDate),
-			Source:      "Google News",
-		}
-		if a.OK() {
-			c <- a
-		}
-	}
 }

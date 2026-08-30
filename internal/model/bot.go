@@ -3,87 +3,44 @@ package model
 import (
 	"bytelyon-client/internal/provider/api"
 	"encoding/json/v2"
-	"fmt"
-	"slices"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/rs/zerolog"
 )
 
-type Bots []*Bot
+var botTypeRegex = regexp.MustCompile(`^(news|search|sitemap)$`)
 
-func GetBots() (arr Bots) {
+func Bots() (arr []*Bot) {
 	_ = json.Unmarshal(api.Get("bots"), &arr)
 	return
 }
 
 type Bot struct {
-	ID        int       `json:"id"`
-	Type      BotType   `json:"type"`
-	Query     string    `json:"query"`
-	Blacklist Blacklist `json:"blacklist"`
-	Headless  bool      `json:"headless"`
-	LastRunAt time.Time `json:"last_run_at"`
-	SitemapID int       `json:"sitemap_id,omitempty"`
-	SearchID  int       `json:"serp_id,omitempty"`
+	ID         int       `json:"id"`
+	Type       BotType   `json:"type"`
+	Query      string    `json:"query"`
+	Blacklist  Blacklist `json:"blacklist"`
+	Headless   bool      `json:"headless"`
+	PlayedAt   time.Time `json:"played_at"`
+	PlayResult string    `json:"play_result"`
+	ChildID    int       `json:"child_id"`
 }
 
 func (b *Bot) MarshalZerologObject(evt *zerolog.Event) {
-	evt.Int("#", b.ID).Str("q", b.Query).Any("t", b.Type)
+	evt.Int("#", b.ID).
+		Str("q", b.Query).
+		Any("t", b.Type).
+		Any("x", b.Blacklist).
+		Time("@", b.PlayedAt)
 }
 
-func (b *Bot) Save() { api.Put(b, "bots", b.ID) }
-
-type BotType string
-
-const (
-	NewsBot    BotType = "news"
-	SearchBot  BotType = "search"
-	SitemapBot BotType = "sitemap"
-)
-
-func (t *BotType) Class() string {
-	switch *t {
-	case NewsBot:
-		return "App\\Models\\Article"
-	case SearchBot:
-		return "App\\Models\\Serp"
-	case SitemapBot:
-		return "App\\Models\\Sitemap"
+func (b *Bot) Save(result ...string) {
+	b.PlayedAt = time.Now().UTC()
+	if len(result) == 0 {
+		b.PlayResult = "ok"
+	} else {
+		b.PlayResult = result[0]
 	}
-	return "unkown"
-}
-
-func (t *BotType) UnmarshalJSON(payload []byte) error {
-	if text := string(payload); text == `"news"` || text == `"search"` || text == `"sitemap"` {
-		*t = BotType(strings.ReplaceAll(text, `"`, ""))
-		return nil
-	}
-	return fmt.Errorf("unknown bot type: %s", payload)
-}
-
-type Blacklist map[string]bool
-
-func (b *Blacklist) UnmarshalJSON(payload []byte) error {
-	var arr []string
-	if err := json.Unmarshal(payload, &arr); err != nil {
-		return err
-	}
-
-	m := make(map[string]bool)
-	for _, item := range arr {
-		m[item] = true
-	}
-	*b = m
-	return nil
-}
-
-func (b *Blacklist) OK(args ...string) bool {
-	for _, arg := range args {
-		if slices.ContainsFunc(strings.Split(arg, " "), func(s string) bool { return (*b)[s] }) {
-			return false
-		}
-	}
-	return true
+	api.Put(b, "bots", b.ID)
 }

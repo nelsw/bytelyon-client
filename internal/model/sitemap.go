@@ -173,7 +173,7 @@ func (s *Sitemap) Scrape() {
 		}
 
 		// save it!
-		go NewSitemapPage(s.Bot, x.url, doc, x.screenshot).Save()
+		go NewPage(s.Bot, x.url, doc, x.screenshot, 0, "").Save()
 
 		s.Update(x.url, true)
 
