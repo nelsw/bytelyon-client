@@ -42,29 +42,31 @@ func NewSearch(b *Bot) *Search {
 	}
 }
 
-func (s *Search) Save() {
-	s.Bot.ChildID = api.Put(s, "bots", s.Bot.ID, "searches")
-	s.Screenshot.Save("serps", s.Bot.ChildID)
-	for _, vv := range s.Pages {
-		for _, v := range vv {
-			v.Save()
-		}
-	}
-}
-
 func (s *Search) Do() {
 	play.It(s.Bot.Headless, func(ctx playwright.BrowserContext) {
 		serpPage, err := play.SearchGoogle(s.Query, ctx)
 		if err != nil {
 			return
 		}
-		s.ScreenshotData = play.Screenshot(serpPage)
+
 		s.doSimilarQueries(serpPage)
+		if id := api.Put(s, "bots", s.Bot.ID, "searches"); s.Bot.ChildID <= 0 {
+			s.Bot.ChildID = id
+		}
+
+		s.ScreenshotData = play.Screenshot(serpPage)
+		s.Screenshot.Save("serps", s.Bot.ChildID)
+
 		s.doSponsoredProducts(ctx, play.Locators(serpPage, "[data-dtld]"))
 		s.doSponsoredResults(ctx, play.Locators(serpPage, "[data-pcu]"))
-		s.doOrganicResults(ctx, play.Locators(serpPage, "h3[id]"))
+		s.doOrganicResults(ctx, serpPage, play.Locators(serpPage, "h3[id]"))
 		s.doOrganicProducts(ctx, serpPage)
-		s.Save()
+		for _, vv := range s.Pages {
+			for _, v := range vv {
+				v.Save()
+			}
+		}
+
 		_ = serpPage.Close()
 	})
 }
@@ -78,6 +80,7 @@ func (s *Search) doSponsoredProducts(x playwright.BrowserContext, ll []playwrigh
 		merchantID := play.Attribute(l, "data-merchant-id")
 		al := l.Locator(fmt.Sprintf("a[data-merchant-id=%s]", merchantID))
 		href := play.Attribute(al, "href")
+		fmt.Println(href)
 		src, img := play.Scrape(href, x)
 		if doc, err := NewDoc(src); err == nil {
 			p := NewPage(s.Bot, href, doc, img, index, "sponsored_products")
@@ -126,11 +129,14 @@ func (s *Search) doSponsoredResults(x playwright.BrowserContext, ll []playwright
 	}
 }
 
-func (s *Search) doOrganicResults(x playwright.BrowserContext, ll []playwright.Locator) {
+func (s *Search) doOrganicResults(x playwright.BrowserContext, p playwright.Page, ll []playwright.Locator) {
 	var index int
 	for _, l := range ll {
 		xl := l.Locator("xpath=ancestor::a[1]")
 		href := play.Attribute(xl, "href")
+		if strings.HasPrefix(href, "/") {
+			href = p.URL() + href
+		}
 		src, img := play.Scrape(href, x)
 		if doc, err := NewDoc(src); err == nil {
 			p := NewPage(s.Bot, href, doc, img, index, "organic_results")
