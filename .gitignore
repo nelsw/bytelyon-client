@@ -2,3 +2,5 @@
 /.claude/
 /bin/
 state.json
+*.log
+*.env*
