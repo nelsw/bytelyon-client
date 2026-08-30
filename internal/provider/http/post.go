@@ -37,36 +37,9 @@ func PostFile(u, fieldName, filename string, b []byte, h map[string][]string) er
 }
 
 func PostForm(u string, v url.Values) ([]byte, error) {
-	return post(u, v.Encode(), map[string]string{
-		"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-		"User-Agent":   userAgent,
+	out, _, err := do(http.MethodPost, u, v.Encode(), map[string][]string{
+		"Content-Type": {"application/x-www-form-urlencoded;charset=UTF-8"},
+		"User-Agent":   {userAgent},
 	})
-}
-
-func PostJSON(u string, b []byte, h map[string][]string) ([]byte, error) {
-	out, _, err := do(http.MethodPost, u, b, h)
 	return out, err
-}
-
-func post(URL string, b []byte, h map[string]string) ([]byte, error) {
-
-	req, err := http.NewRequest(http.MethodPost, URL, bytes.NewBuffer(b))
-	if err != nil {
-		return nil, err
-	}
-
-	for k, v := range h {
-		req.Header.Set(k, v)
-	}
-
-	var res *http.Response
-	if res, err = http.DefaultClient.Do(req); err != nil {
-		return nil, err
-	}
-
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(res.Body)
-
-	return io.ReadAll(res.Body)
 }
