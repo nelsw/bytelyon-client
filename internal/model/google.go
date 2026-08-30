@@ -135,7 +135,7 @@ func decodeGoogleLink(link string) (URL string) {
 	} else if URL, err = decodeNode(node, matches[1]); err != nil {
 		l.Warn().Msg("failed to decode gstatic node")
 	} else {
-		l.Debug().Str("url", URL).Msg("decoded gstatic url")
+		log.Debug().Str("url", URL).Msg("decoded gstatic url")
 	}
 	return
 }
