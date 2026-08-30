@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var botTypeRegex = regexp.MustCompile(`^(news|search|sitemap)$`)
@@ -43,4 +44,20 @@ func (b *Bot) Save(result ...string) {
 		b.PlayResult = result[0]
 	}
 	api.Put(b, "bots", b.ID)
+}
+
+func (b *Bot) Do() {
+	log.Log().EmbedObject(b).Msg("working...")
+	defer b.Save()
+
+	log.Info().EmbedObject(b).Send()
+
+	switch b.Type {
+	case NewsBot:
+		NewNews(b).Do()
+	case SearchBot:
+		NewSearch(b).Do()
+	case SitemapBot:
+		NewSitemap(b).Do()
+	}
 }
