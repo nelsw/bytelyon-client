@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Article struct {
@@ -44,15 +45,21 @@ type Article struct {
 }
 
 func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
-	evt.Str("title", a.Title).
-		Str("url", a.URL).
-		Time("published_at", a.PublishedAt).
-		Str("description", a.Description).
-		Str("type", a.Source)
+	evt.Str("t", a.Title).
+		Str("#", a.URL).
+		Time("@", a.PublishedAt).
+		Str("d", a.Description).
+		Str("s", a.Source).
+		Str("p", a.Publisher).
+		Str("i", a.ImgURL).
+		Str("a", a.ImgAlt).
+		Any("k", a.Keywords).
+		Int("b", len(a.Body))
 }
 
 func (a *Article) Save() {
 	api.Put(a, "bots", a.Bot.ID, "articles")
+	log.Info().EmbedObject(a).Msg("Article Saved!")
 }
 
 func (a *Article) Fill(content string) {
