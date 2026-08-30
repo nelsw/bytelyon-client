@@ -7,7 +7,7 @@ type Screenshot struct {
 	ScreenshotKey string `json:"screenshot_key"`
 
 	// ScreenshotData is compressed bytes of a full-page screenshot.
-	ScreenshotData []byte `json:"screenshot_data"`
+	ScreenshotData []byte `json:"-"`
 }
 
 func (s *Screenshot) Save(path string, id int) {
