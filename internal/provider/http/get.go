@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"encoding/json/v2"
 	"encoding/xml"
 	"errors"
 	"math/rand"
@@ -17,14 +16,6 @@ const (
 	retryIntervalMax = 500 * time.Millisecond
 )
 
-func GetJSON[T any](url string, header http.Header) (t T, err error) {
-	var out []byte
-	if out, err = Get(url, header); err == nil {
-		err = json.Unmarshal(out, &t)
-	}
-	return
-}
-
 func GetNode(url string) (node *html.Node, err error) {
 	var out []byte
 	if out, err = Get(url, nil); err == nil {
@@ -35,7 +26,7 @@ func GetNode(url string) (node *html.Node, err error) {
 
 func GetXML[T any](url string) (t T) {
 	if out, err := Get(url, nil); err == nil {
-		err = xml.Unmarshal(out, &t)
+		_ = xml.Unmarshal(out, &t)
 	}
 	return
 }

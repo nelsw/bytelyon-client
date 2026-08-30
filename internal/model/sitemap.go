@@ -70,7 +70,7 @@ func NewSitemap(b *Bot, opts ...int) *Sitemap {
 
 func (s *Sitemap) Save() {
 	a := map[string][]string{
-		"urls": s.Set.Keys(),
+		"urls": s.Keys(),
 	}
 	api.Put(a, "bots", s.Bot.ID, "sitemaps")
 }

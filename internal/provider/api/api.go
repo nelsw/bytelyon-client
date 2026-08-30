@@ -28,7 +28,7 @@ func url(parts []any) string {
 	var out strings.Builder
 	out.WriteString(uri)
 	for _, part := range parts {
-		out.WriteString(fmt.Sprintf("/%v", part))
+		_, _ = fmt.Fprintf(&out, "/%v", part)
 	}
 	return out.String()
 }

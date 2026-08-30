@@ -107,9 +107,10 @@ func decodeGoogleLink(link string) (URL string) {
 			var sg, ts string
 			if e := n.FirstChild; e != nil {
 				for _, att := range e.Attr {
-					if att.Key == "data-n-a-sg" {
+					switch att.Key {
+					case "data-n-a-sg":
 						sg = att.Val
-					} else if att.Key == "data-n-a-ts" {
+					case "data-n-a-ts":
 						ts = att.Val
 					}
 				}

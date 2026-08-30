@@ -6,6 +6,7 @@ import (
 	"bytelyon-client/internal/provider/logs"
 	"bytelyon-client/internal/provider/play"
 	"flag"
+	"fmt"
 	"maps"
 	"os"
 	"os/signal"
@@ -26,9 +27,7 @@ func init() {
 	api.Init(url, key)
 	play.Init()
 
-	log.Log().Msg(`🦁`)
-	log.Log().Msg(`🦁  ByteLyon`)
-	log.Log().Msg(`🦁`)
+	logs.PrintBanner()
 }
 
 func main() {
@@ -39,7 +38,7 @@ func main() {
 	todo := make(map[int]*model.Bot)
 
 	ƒ := func(bot *model.Bot) {
-
+		log.Log().EmbedObject(bot).Msg("working...")
 		defer func() {
 			bot.Save()
 			delete(todo, bot.ID)
@@ -62,10 +61,13 @@ func main() {
 	for {
 		select {
 		case <-quit:
+			fmt.Println() // newline after Ctrl+C
+			log.Log().Msg("quitting...")
 			poller.Stop()
-			log.Log().Msgf("\n👋\n")
+			log.Log().Msg("👋")
 			return
 		case <-poller.C:
+			log.Log().Msg("polling...")
 			for _, bot := range model.Bots() {
 				if _, ok := todo[bot.ID]; !ok {
 					todo[bot.ID] = bot
