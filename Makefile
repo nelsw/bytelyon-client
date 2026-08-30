@@ -1,3 +1,5 @@
+SRC=$(shell find . -name "*.go")
+
 .PHONY: fmt lint test install_deps clean
 
 ƒø:
