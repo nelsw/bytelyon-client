@@ -1,8 +1,7 @@
-.PHONY: fmt lint test install_deps clean
+.PHONY: fmt lint test deps clean
 
 KEY=
 LOG=debug
-PRO=
 SRC=$(shell find . -name "*.go")
 URL=http://localhost:80
 
@@ -13,7 +12,7 @@ URL=http://localhost:80
 
 clean:
 	@make ƒø name=clean
-	@rm -f *.log ./bin/app
+	@rm -f .storage ./bin/app
 	@make ƒç name=clean
 
 app:
@@ -21,13 +20,9 @@ app:
 	@go run ./cmd/app/main.go -log=$(LOG) -url=$(URL) -key=$(KEY)
 	@make ƒç name=app
 
-bot:
-	@make ƒø name=bot
-	@go run ./cmd/bot/main.go -profile=$(PRO)
-	@make ƒç name=bot
-
 build:
 	@make ƒø name=build
+	@go generate ./...
 	@rm -f ./bin/app
 	@go build -o ./bin/app ./cmd/app
 	@make ƒç name=build

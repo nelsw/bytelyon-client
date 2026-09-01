@@ -4,8 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"math/rand"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/nelsw/bytelyon-client/pkg/logs"
@@ -15,118 +13,41 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var (
-	pwc *playwright.Playwright
-
-	blockedRegex = regexp.MustCompile(`(google.com/sorry|captcha|unusual traffic)`)
-
-	searchSelectors = []string{
-		"input[name='q']",
-		"input[title='Search']",
-		"input[aria-label='Search']",
-		"textarea[title='Search']",
-		"textarea[name='q']",
-		"textarea[aria-label='Search']",
-		"textarea",
-	}
+const (
+	scrollScript = `async () => {
+  await new Promise((resolve) => {
+    let totalHeight = 0;
+    let distance = 100;
+    let timer = setInterval(() => {
+      let scrollHeight = document.body.scrollHeight;
+      window.scrollBy(0, distance);
+      totalHeight += distance;
+      if (totalHeight >= scrollHeight || totalHeight >= 10_000) {
+		window.scrollTo(0, 0);
+        clearInterval(timer);
+        resolve();
+      }
+    }, 100);
+  });
+}`
 )
 
-func init() {
-	opts := &playwright.RunOptions{Logger: logs.NewSlog()}
-	if err := playwright.Install(opts); err != nil {
-		panic(err)
-	} else if pwc, err = playwright.Run(opts); err != nil {
-		panic(err)
-	}
-}
-
-func delay(min, max int) *float64 {
-	return new(float64(rand.Intn(max-min) + min))
-}
-
-// NewBrowser creates a new Browser instance
-func NewBrowser(headless bool) (playwright.Browser, error) {
-	return pwc.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: &headless,
-		Timeout:  new(2 * 60_000.0),
-		Args: []string{
-			"--disable-accelerated-2d-canvas",
-			"--disable-background-networking",
-			"--disable-background-timer-throttling",
-			"--disable-backgrounding-occluded-windows",
-			"--disable-blink-features=AutomationControlled",
-			"--disable-breakpad",
-			"--disable-component-extensions-with-background-page",
-			"--disable-dev-shm-usage",
-			"--disable-extensions",
-			"--disable-features=IsolateOrigins,site-per-process",
-			"--disable-features=TranslateUI",
-			"--disable-gpu",
-			"--disable-ipc-flooding-protection",
-			"--disable-renderer-backgrounding",
-			"--disable-setuid-sandbox",
-			"--disable-site-isolation-trials",
-			"--disable-document-security",
-			"--enable-features=NetworkService,NetworkServiceInProcess",
-			"--force-color-profile=srgb",
-			"--hide-scrollbars",
-			"--metrics-recording-only",
-			"--mute-audio",
-			"--no-first-run",
-			"--no-sandbox",
-			"--no-zygote",
-		},
-		IgnoreDefaultArgs: []string{
-			"--enable-automation",
-		},
-	})
-}
-
-// NewBrowserContext creates a new BrowserContext instance
-func NewBrowserContext(bro playwright.Browser) (playwright.BrowserContext, error) {
-
-	userAgent := func() *string {
-
-		agents := []string{
-			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
-			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.79 Safari/537.36",
-			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
-			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672 Safari/537.36",
-			"Mozilla/5.0 (X11; Linux x86_64; CentOS Ubuntu 19.04) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5957.0 Safari/537.36",
-		}
-
-		return new(agents[rand.Intn(len(agents))])
-	}
-
-	state, _ := store.Find[playwright.OptionalStorageState]("state.json")
-
-	ctx, err := bro.NewContext(playwright.BrowserNewContextOptions{
-		AcceptDownloads:   new(true),
-		ColorScheme:       playwright.ColorSchemeDark,
-		ForcedColors:      playwright.ForcedColorsNone,
-		HasTouch:          new(false),
-		IsMobile:          new(false),
-		JavaScriptEnabled: new(true),
-		Locale:            new("en-US"),
-		Permissions:       []string{"geolocation", "notifications"},
-		ReducedMotion:     playwright.ReducedMotionNoPreference,
-		TimezoneId:        new("America/New_York"),
-		UserAgent:         userAgent(),
-		StorageState:      &state,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	err = ctx.AddInitScript(playwright.Script{Content: new(`() => {
+var (
+	pwc        *playwright.Playwright
+	pageScript = new(`() => {
+  Object.defineProperty(window.screen, "width", { get: () => 1920 });
+  Object.defineProperty(window.screen, "height", { get: () => 1080 });
+  Object.defineProperty(window.screen, "colorDepth", { get: () => 24 });
+  Object.defineProperty(window.screen, "pixelDepth", { get: () => 24 });
+}`)
+	contextScript = new(`() => {
   // navigator
   Object.defineProperty(navigator, "webdriver", { get: () => false });
   Object.defineProperty(navigator, "plugins", {
 	get: () => [1, 2, 3, 4, 5],
   });
   Object.defineProperty(navigator, "languages", {
-	get: () => ["en-US", "en", "zh-CN"],
+	get: () => ["en-US", "en"],
   });
 
   // window
@@ -153,50 +74,133 @@ func NewBrowserContext(bro playwright.Browser) (playwright.BrowserContext, error
 	  return getParameter.call(this, parameter);
 	};
   }
-}`)})
+}`)
+	browserArgs = []string{
+		"--disable-accelerated-2d-canvas",
+		"--disable-background-networking",
+		"--disable-background-timer-throttling",
+		"--disable-backgrounding-occluded-windows",
+		"--disable-blink-features=AutomationControlled",
+		"--disable-breakpad",
+		"--disable-component-extensions-with-background-pages",
+		"--disable-dev-shm-usage",
+		"--disable-extensions",
+		"--disable-features=IsolateOrigins,site-per-process",
+		"--disable-features=TranslateUI",
+		"--disable-gpu",
+		"--disable-ipc-flooding-protection",
+		"--disable-renderer-backgrounding",
+		"--disable-setuid-sandbox",
+		"--disable-site-isolation-trials",
+		"--disable-web-security",
+		"--enable-features=NetworkService,NetworkServiceInProcess",
+		"--force-color-profile=srgb",
+		"--hide-scrollbars",
+		"--metrics-recording-only",
+		"--mute-audio",
+		"--no-first-run",
+		"--no-sandbox",
+		"--no-zygote",
+	}
+)
 
-	if err != nil {
-		return nil, err
+func init() {
+	opts := &playwright.RunOptions{Logger: logs.NewSlog()}
+	if err := playwright.Install(opts); err != nil {
+		panic(err)
+	} else if pwc, err = playwright.Run(opts); err != nil {
+		panic(err)
+	}
+}
+
+func delay(min, max int) *float64 { return new(float64(rand.Intn(max-min) + min)) }
+
+// NewBrowser creates a new Browser instance
+func NewBrowser(headless bool) (playwright.Browser, error) {
+	return pwc.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless:          &headless,
+		Timeout:           new(2 * 60_000.),
+		Args:              browserArgs,
+		IgnoreDefaultArgs: []string{"--enable-automation"},
+	})
+}
+
+// NewBrowserContext creates a new BrowserContext instance
+func NewBrowserContext(bro playwright.Browser) (playwright.BrowserContext, error) {
+
+	state, _ := store.Find[playwright.OptionalStorageState]("state.json")
+
+	var colorScheme *playwright.ColorScheme
+	if hour := time.Now().Hour(); hour >= 19 || hour < 7 {
+		colorScheme = playwright.ColorSchemeDark
+	} else {
+		colorScheme = playwright.ColorSchemeLight
 	}
 
-	ctx.SetDefaultTimeout(60_000)
-
-	return ctx, nil
-}
-
-// IsPageBlocked determines if we have been blocked from visiting a URL.
-func IsPageBlocked(page playwright.Page) bool {
-	return blockedRegex.MatchString(page.URL())
-}
-
-// IsRequestBlocked determines if we have been blocked from requesting a URL.
-func IsRequestBlocked(res playwright.Response) bool {
-	return !res.Ok()
-}
-
-// Type fills text to type into a focused element.
-func Type(page playwright.Page, s string) error {
-	return page.Keyboard().Type(s, playwright.KeyboardTypeOptions{
-		Delay: delay(50, 150),
+	ctx, err := bro.NewContext(playwright.BrowserNewContextOptions{
+		AcceptDownloads:   new(true),
+		ColorScheme:       colorScheme,
+		ForcedColors:      playwright.ForcedColorsNone,
+		HasTouch:          new(false),
+		IsMobile:          new(false),
+		JavaScriptEnabled: new(true),
+		Locale:            new("en-US"),
+		Permissions:       []string{"geolocation", "notifications"},
+		ReducedMotion:     playwright.ReducedMotionNoPreference,
+		TimezoneId:        new("America/New_York"),
+		UserAgent:         new("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"),
+		StorageState:      &state,
 	})
-}
 
-// Press executes a keyboard event on a document.
-func Press(page playwright.Page, s string) error {
-	return page.Keyboard().Press(s, playwright.KeyboardPressOptions{
-		Delay: delay(200, 500),
-	})
+	if err == nil {
+		if err = ctx.AddInitScript(playwright.Script{Content: contextScript}); err == nil {
+			ctx.SetDefaultTimeout(60_000)
+		}
+	}
+	return ctx, err
 }
 
 // NewPage creates a new document in the browser context.
 func NewPage(ctx playwright.BrowserContext) (page playwright.Page, err error) {
 	if page, err = ctx.NewPage(); err == nil {
-		err = page.AddInitScript(playwright.Script{Content: new(`() => {
-  Object.defineProperty(window.screen, "width", { get: () => 1920 });
-  Object.defineProperty(window.screen, "height", { get: () => 1080 });
-  Object.defineProperty(window.screen, "colorDepth", { get: () => 24 });
-  Object.defineProperty(window.screen, "pixelDepth", { get: () => 24 });
-}`)})
+		err = page.AddInitScript(playwright.Script{Content: pageScript})
+	}
+	return
+}
+
+func NewTab(x playwright.BrowserContext, l playwright.Locator) (p playwright.Page, err error) {
+	if p, err = x.ExpectPage(func() error {
+		return l.Locator("xpath=ancestor::a[1]").Click(playwright.LocatorClickOptions{
+			Force:     new(true),
+			Modifiers: []playwright.KeyboardModifier{"Meta"},
+			Timeout:   new(0.0),
+		})
+	}); err != nil {
+		log.Warn().Err(err).Msg("Client - Failed to ExpectPage")
+	} else if err = p.BringToFront(); err != nil {
+		log.Warn().Err(err).Msg("Client - Failed to BringToFront")
+	} else if err = Scroll(p); err != nil {
+		log.Warn().Err(err).Msg("Client - Failed to ScrollToBottomThenTop")
+	} else {
+		log.Info().Str("url", p.URL()).Msg("Client - NewTab")
+	}
+	return
+}
+
+func Click(p playwright.Page, s string, min, max int) (err error) {
+	if err = p.Locator(s).Click(playwright.LocatorClickOptions{Delay: delay(min, max)}); err != nil {
+		log.Warn().Err(err).Str("url", p.URL()).Str("selector", s).Msg("click failed")
+	} else {
+		log.Debug().Str("url", p.URL()).Str("selector", s).Msg("clicked!")
+	}
+	return
+}
+
+func Type(p playwright.Page, s string, min, max int) (err error) {
+	if err = p.Keyboard().Type(s, playwright.KeyboardTypeOptions{Delay: delay(min, max)}); err != nil {
+		log.Warn().Err(err).Str("url", p.URL()).Str("text", s).Msg("typed failed")
+	} else {
+		log.Debug().Str("url", p.URL()).Str("text", s).Msg("typed!")
 	}
 	return
 }
@@ -218,72 +222,31 @@ func Visit(page playwright.Page, url string, scroll ...bool) error {
 		return fmt.Errorf("failed to visit %s: [%d] %s", url, res.Status(), res.StatusText())
 	}
 	if len(scroll) > 0 && scroll[0] {
-		return ScrollToBottomThenTop(page)
+		return Scroll(page)
 	}
 	return nil
 }
 
-func ScrollToBottomThenTop(page playwright.Page) error {
-	_, err := page.Evaluate(`async () => {
-  await new Promise((resolve) => {
-    let totalHeight = 0;
-    let distance = 100;
-    let timer = setInterval(() => {
-      let scrollHeight = document.body.scrollHeight;
-      window.scrollBy(0, distance);
-      totalHeight += distance;
-      if (totalHeight >= scrollHeight || totalHeight >= 10_000) {
-		window.scrollTo(0, 0);
-        clearInterval(timer);
-        resolve();
-      }
-    }, 100);
-  });
-}`)
-	return err
-}
+func Sleep(p playwright.Page, min, max int) { p.WaitForTimeout(*delay(min, max)) }
 
-// Click the first document element located by the given selectors.
-func Click(page playwright.Page, selectors ...string) (err error) {
-
-	var count int
-	var selector string
-	var locator playwright.Locator
-	for _, selector = range selectors {
-
-		if locator = page.Locator(selector); locator == nil {
-			continue
-		}
-
-		if count, err = locator.Count(); err != nil || count == 0 {
-			continue
-		}
-
-		if err = locator.Click(playwright.LocatorClickOptions{Delay: delay(200, 500)}); err != nil {
-			continue
-		}
-
-		break
-	}
-	return
-}
-
-// WaitForLoadState returns nil when the required load state has been reached, or error if an exception occurred.
-func WaitForLoadState(page playwright.Page, ls ...playwright.LoadState) error {
-	s := playwright.LoadStateDomcontentloaded
-	if len(ls) > 0 {
-		s = &ls[0]
-	}
-	return page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: s,
+func Wait(p playwright.Page, s *playwright.LoadState) error {
+	return p.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   s,
+		Timeout: new(60_000.0),
 	})
+}
+
+func Scroll(p playwright.Page) error {
+	_, err := p.Evaluate(scrollScript)
+	return err
 }
 
 func Title(page playwright.Page) string {
 	s, err := page.Title()
 	if err != nil {
-		log.Err(err).Msg("failed to get document title")
-		return ""
+		log.Err(err).Str("url", page.URL()).Msg("failed to get title")
+	} else {
+		log.Trace().Str("url", page.URL()).Msg("got title")
 	}
 	return s
 }
@@ -292,88 +255,55 @@ func Title(page playwright.Page) string {
 func Content(page playwright.Page) string {
 	s, err := page.Content()
 	if err != nil {
-		log.Err(err).Msg("failed to get document content")
-		return ""
+		log.Err(err).Str("url", page.URL()).Msg("failed to get content")
+	} else {
+		log.Trace().Str("url", page.URL()).Msg("got content")
 	}
 	return s
+}
+
+func HTML(page playwright.Page) string {
+	s, err := page.Content()
+	if err != nil {
+		log.Err(err).Str("url", page.URL()).Msg("failed to get content")
+	} else {
+		log.Trace().Str("url", page.URL()).Msg("got content")
+	}
+	return s
+}
+
+func IMG(p playwright.Page, s ...string) []byte {
+
+	opts := playwright.PageScreenshotOptions{FullPage: new(true)}
+	if len(s) > 0 {
+		opts.Path = new(".storage/" + s[0])
+	}
+
+	b, err := p.Screenshot(opts)
+	if err != nil {
+		log.Err(err).Str("url", p.URL()).Msg("failed to get screenshot")
+		return nil
+	}
+
+	log.Trace().Str("url", p.URL()).Msg("got screenshot")
+	return b
 }
 
 // Screenshot returns the screenshot of the document as a byte array or an empty byte array if the document has failed to load.
 func Screenshot(page playwright.Page, path ...string) []byte {
 
-	opts := playwright.PageScreenshotOptions{
-		FullPage: new(true),
-	}
+	opts := playwright.PageScreenshotOptions{FullPage: new(true)}
 	if len(path) > 0 {
 		opts.Path = new(path[0])
 	}
 
 	b, err := page.Screenshot(opts)
 	if err != nil {
-		log.Err(err).Msg("failed to get document screenshot")
-		return nil
+		log.Err(err).Str("url", page.URL()).Msg("failed to get screenshot")
+	} else {
+		log.Trace().Str("url", page.URL()).Msg("got screenshot")
 	}
 	return b
-}
-
-func SearchGoogle(q string, ctx playwright.BrowserContext) (page playwright.Page, err error) {
-	if page, err = NewPage(ctx); err != nil {
-		return
-	} else if _, err = GoTo(page, "https://www.google.com"); err != nil {
-		return
-	} else if err = Click(page, searchSelectors...); err != nil {
-		return
-	} else if err = Type(page, q); err != nil {
-		return
-	} else if err = Press(page, "Enter"); err != nil {
-		return
-	} else if err = WaitForLoadState(page); err != nil {
-		return
-	}
-
-	for strings.HasPrefix(page.URL(), "https://www.google.com/sorry") {
-		log.Printf("waiting for google to stop blocking us: %s", page.URL())
-		time.Sleep(time.Second)
-	}
-
-	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateNetworkidle,
-	})
-	if err != nil {
-		return
-	}
-
-	log.Printf("google is no longer blocking us: %s", page.URL())
-
-	if IsPageBlocked(page) {
-		return
-	}
-
-	log.Info().Msgf("Reached Google SERP for query: %s", q)
-
-	return
-}
-
-func Locators(page playwright.Page, s string) []playwright.Locator {
-	arr, err := page.Locator(s).All()
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Str("selector", s).
-			Msg("failed to get locators")
-		return []playwright.Locator{}
-	}
-	log.Trace().Int("count", len(arr)).Msgf("found %d locators for selector: %s", len(arr), s)
-	return arr
-}
-
-func Attribute(l playwright.Locator, a string) string {
-	s, err := l.GetAttribute(a)
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to get attribute")
-		return ""
-	}
-	return strings.TrimSpace(s)
 }
 
 func Scrape(url string, ctx playwright.BrowserContext) (content string, screenshot []byte) {
@@ -439,4 +369,39 @@ func ScrapeContent(ctx playwright.BrowserContext, url string) (content string, e
 		Send()
 
 	return
+}
+
+func New(headless bool) (ctx playwright.BrowserContext, err error) {
+	var bro playwright.Browser
+	if bro, err = NewBrowser(headless); err == nil {
+		ctx, err = NewBrowserContext(bro)
+	}
+	return
+}
+
+func It(h bool, u string) (playwright.Page, error) {
+	var p playwright.Page
+	if x, err := New(h); err != nil {
+		return nil, err
+	} else if p, err = x.NewPage(); err != nil {
+		return nil, err
+	} else if _, err = GoTo(p, u); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func Close(context playwright.BrowserContext) {
+
+	if state, err := context.StorageState(); err != nil {
+		log.Warn().Err(err).Msg("failed to get browser context storage state")
+	} else if err = store.Save(state, "state.json"); err != nil {
+		log.Warn().Err(err).Msg("failed to save browser context storage state")
+	} else {
+		log.Debug().Msg("saved browser context storage state")
+	}
+
+	bro := context.Browser()
+	_ = context.Close()
+	_ = bro.Close()
 }

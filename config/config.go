@@ -59,7 +59,7 @@ func init() {
 	flag.StringVar(&v.AppLog, "log", "debug", "log level trace->disabled")
 	flag.StringVar(&v.ApiURL, "url", "https://localhost", "web app api url")
 	flag.StringVar(&v.ApiKey, "key", "", "client api key")
-	flag.BoolVar(&v.DryRun, "dry-run", false, "dry run")
+	flag.BoolVar(&v.DryRun, "dry", false, "dry run")
 	flag.Parse()
 }
 
