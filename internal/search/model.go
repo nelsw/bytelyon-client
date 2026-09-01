@@ -70,8 +70,8 @@ func (r *Result) AddPage(t Section, URL, title, content string) *Page {
 }
 
 func (r *Result) Add(t Section, a any) {
-	if s, ok := a.(string); ok {
-		r.Data[t] = append(r.Data[t], s)
+	if a != nil {
+		r.Data[t] = append(r.Data[t], a)
 	}
 }
 

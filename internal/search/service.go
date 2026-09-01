@@ -154,14 +154,11 @@ func fetchSponsoredProducts(r *Result, x playwright.BrowserContext, serp playwri
 			_ = p.Close()
 		}
 	}
-	//merchantID := play.Attribute(l, "data-merchant-id")
-	//al := l.Locator(fmt.Sprintf("a[data-merchant-id=%s]", merchantID))
-	//href := play.Attribute(al, "href")
 }
 
 func fetchOrganicProducts(r *Result, x playwright.BrowserContext, serp playwright.Page) {
 
-	all, err := serp.Locator("product-viewer-entrypoint").All()
+	all, err := serp.Locator(`product-viewer-entrypoint`).All()
 	log.Err(err).Stringer("section", OrganicProducts).Int("count", len(all)).Send()
 	if err != nil {
 		return
@@ -169,7 +166,15 @@ func fetchOrganicProducts(r *Result, x playwright.BrowserContext, serp playwrigh
 
 	var p playwright.Page
 	for _, l := range all {
-		if p, err = play.NewTab(x, l.Locator("img").First()); err == nil && p != nil {
+
+		// click the product image to display the product viewer elements
+		if err = l.Locator("img").First().Click(playwright.LocatorClickOptions{Force: new(true)}); err != nil {
+			log.Err(err).Msg("failed to click on product image")
+			continue
+		}
+
+		// click the anchor nested inside the redirect element
+		if p, err = play.NewTab(x, serp.Locator(`div[data-redirect-url] a`).First()); err == nil && p != nil {
 			play.IMG(p, r.AddPage(OrganicProducts, p.URL(), play.Title(p), play.HTML(p)).IMG)
 			play.Sleep(p, 500, 1_000)
 			_ = p.Close()
