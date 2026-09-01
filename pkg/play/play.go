@@ -170,10 +170,9 @@ func NewPage(ctx playwright.BrowserContext) (page playwright.Page, err error) {
 
 func NewTab(x playwright.BrowserContext, l playwright.Locator) (p playwright.Page, err error) {
 	if p, err = x.ExpectPage(func() error {
-		return l.Locator("xpath=ancestor::a[1]").Click(playwright.LocatorClickOptions{
+		return l.Click(playwright.LocatorClickOptions{
 			Force:     new(true),
 			Modifiers: []playwright.KeyboardModifier{"Meta"},
-			Timeout:   new(0.0),
 		})
 	}); err != nil {
 		log.Warn().Err(err).Msg("Client - Failed to ExpectPage")

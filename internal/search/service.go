@@ -17,11 +17,10 @@ func blocked(p playwright.Page) bool {
 }
 
 func handleCaptcha(p playwright.Page) bool {
-	for i := range 30 {
-
+	for {
 		log.Warn().
 			Str("url", p.URL()).
-			Int("seconds", 90-(3*i)).
+			//Int("seconds", 90-(3*i)).
 			Msg("user must solve captcha...")
 
 		if time.Sleep(3 * time.Second); !blocked(p) {
@@ -29,10 +28,10 @@ func handleCaptcha(p playwright.Page) bool {
 			return true
 		}
 	}
-	log.Warn().
-		Str("url", p.URL()).
-		Msg("failed to solve captcha in time!")
-	return false
+	//log.Warn().
+	//	Str("url", p.URL()).
+	//	Msg("failed to solve captcha in time!")
+	//return false
 }
 
 func Fetch(r *Result, headless bool) error {
@@ -80,10 +79,6 @@ func Fetch(r *Result, headless bool) error {
 
 	play.IMG(p, r.IMG)
 	fetchSimilarQueries(r, p)
-	if err = store.Save(r, "search", r.BotID, uuid.FromURL(r.url).String()+".json"); err != nil {
-		log.Err(err).Msg("failed to save search result")
-	}
-
 	fetchOrganicProducts(r, context, p)
 	fetchSponsoredProducts(r, context, p)
 	fetchSponsoredResults(r, context, p)
@@ -97,7 +92,7 @@ func Fetch(r *Result, headless bool) error {
 
 func fetchSimilarQueries(r *Result, serp playwright.Page) {
 
-	var m map[string]bool
+	m := make(map[string]bool)
 	var s string
 
 	all, err := serp.Locator("div[data-notify-expansion]").All()
@@ -174,7 +169,7 @@ func fetchOrganicProducts(r *Result, x playwright.BrowserContext, serp playwrigh
 
 	var p playwright.Page
 	for _, l := range all {
-		if p, err = play.NewTab(x, l); err == nil && p != nil {
+		if p, err = play.NewTab(x, l.Locator("img").First()); err == nil && p != nil {
 			play.IMG(p, r.AddPage(OrganicProducts, p.URL(), play.Title(p), play.HTML(p)).IMG)
 			play.Sleep(p, 500, 1_000)
 			_ = p.Close()
@@ -210,7 +205,7 @@ func fetchOrganicResults(r *Result, x playwright.BrowserContext, serp playwright
 
 	var p playwright.Page
 	for _, l := range all {
-		if p, err = play.NewTab(x, l); err == nil && p != nil {
+		if p, err = play.NewTab(x, l.Locator("xpath=ancestor::a[1]")); err == nil && p != nil {
 			play.IMG(p, r.AddPage(OrganicResults, p.URL(), play.Title(p), play.HTML(p)).IMG)
 			play.Sleep(p, 500, 1_000)
 			_ = p.Close()
