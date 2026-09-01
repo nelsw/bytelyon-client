@@ -1,13 +1,13 @@
 package model
 
 import (
-	"bytelyon-client/internal/provider/api"
 	"encoding/json/v2"
 	"regexp"
 	"time"
 
+	"github.com/nelsw/bytelyon-client/pkg/api"
+
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 var botTypeRegex = regexp.MustCompile(`^(news|search|sitemap)$`)
@@ -46,18 +46,17 @@ func (b *Bot) Save(result ...string) {
 	api.Put(b, "bots", b.ID)
 }
 
-func (b *Bot) Do() {
-	log.Log().EmbedObject(b).Msg("working...")
-	defer b.Save()
-
-	log.Info().EmbedObject(b).Send()
-
-	switch b.Type {
-	case NewsBot:
-		NewNews(b).Do()
-	case SearchBot:
-		NewSearch(b).Do()
-	case SitemapBot:
-		NewSitemap(b).Do()
-	}
-}
+//func (b *Bot) Do() {
+//	log.Log().EmbedObject(b).Msg("working...")
+//	defer b.Save()
+//
+//	log.Info().EmbedObject(b).Send()
+//
+//	switch b.Type {
+//
+//	case SearchBot:
+//		NewSearch(b).Do()
+//	case SitemapBot:
+//		NewSitemap(b).Do()
+//	}
+//}

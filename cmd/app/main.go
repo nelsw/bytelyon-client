@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytelyon-client/internal/config"
-	"bytelyon-client/internal/model"
 	"fmt"
 	"maps"
 	"os"
@@ -10,12 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nelsw/bytelyon-client/internal/model"
+
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
-
-	config.FromCLI()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

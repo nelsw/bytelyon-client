@@ -4,3 +4,4 @@
 state.json
 *.log
 *.env*
+*.storage/
