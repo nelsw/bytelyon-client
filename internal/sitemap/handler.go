@@ -5,13 +5,11 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/uuid"
 )
 
-func Handle(id, botID int, headless bool, domain string) error {
+func Handle(id, botID int, headless bool, domain string) {
 
 	r := NewResult(id, domain)
 	err := Fetch(r, headless)
-	if err != nil {
-		panic(err)
+	if err == nil {
+		_ = store.Save(r.Keys(), "sitemap", botID, uuid.FromURL(r.URL).String()+".json")
 	}
-	urls := r.Keys()
-	return store.Save(urls, "sitemap", botID, uuid.FromURL(r.URL).String()+".json")
 }

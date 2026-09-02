@@ -12,7 +12,6 @@ func init() { absPath, _ = os.Executable() }
 
 func MakeDir(path string) error            { return os.MkdirAll(path, 0755) }
 func Read(path string) ([]byte, error)     { return os.ReadFile(path) }
-func Remove(path string) error             { return os.Remove(path) }
 func Write(path string, data []byte) error { return os.WriteFile(path, data, 0644) }
 
 func ReadType[T any](path string, absolutePath ...bool) (t T, err error) {

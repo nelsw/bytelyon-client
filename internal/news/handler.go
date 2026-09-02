@@ -4,66 +4,61 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nelsw/bytelyon-client/config"
-	"github.com/nelsw/bytelyon-client/pkg/model"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/nelsw/bytelyon-client/pkg/play"
-	"github.com/nelsw/bytelyon-client/pkg/store"
-	"github.com/nelsw/bytelyon-client/pkg/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 const maxConcurrency = 5
 
-func Handle(id int, headless bool, query string, after time.Time, ignore *model.Set[string]) error {
+func Handle(
+	id int,
+	h bool,
+	q string,
+	t time.Time,
+	m map[string]bool,
+) {
 
-	context, err := play.New(headless)
+	arr := get(q, t, m)
+	if len(arr) == 0 {
+		return
+	}
+
+	context, err := play.New(h)
 	if err != nil {
-		return err
+		return
 	}
 	defer play.Close(context)
 
-	articles := Fetch(query, after, ignore)
-	log.Info().Str("q", query).Msgf("articles found: %d", len(articles))
-	if len(articles) == 0 {
-		return nil
+	ch := make(chan *Article)
+	for _, a := range arr {
+		ch <- a
 	}
-
-	jobs := make(chan *Article)
-	go func() {
-		for _, a := range articles {
-			log.Debug().EmbedObject(a).Msg("scraping article")
-			jobs <- a
-		}
-		close(jobs)
-	}()
+	close(ch)
 
 	var wg sync.WaitGroup
 	for range maxConcurrency {
 		wg.Go(func() {
-			var content string
-			for a := range jobs {
-				if content, err = play.ScrapeContent(context, a.URL); err == nil {
-					a.Fill(content)
-					log.Debug().EmbedObject(a).Msg("saving article")
-					if save(id, a); !config.DryRun() {
-						send(id, a)
-					}
+			for a := range ch {
+				var p playwright.Page
+				log.Info().EmbedObject(a).Msg("scraping article")
+				if p, err = play.NewPage(context); err != nil {
+					log.Err(err).EmbedObject(a).Msg("failed to create page")
+				} else if _, err = play.GoTo(p, a.Link); err != nil {
+					log.Err(err).EmbedObject(a).Msg("failed to navigate to page")
+				} else if err = play.Wait(p, playwright.LoadStateNetworkidle); err != nil {
+					log.Err(err).EmbedObject(a).Msg("failed to wait for page to load")
+				} else {
+					play.Sleep(p, 500, 1000)
+					a.URL = p.URL()
+					a.Fill(play.HTML(p))
+					_ = put(id, a)
+				}
+				if p != nil {
+					_ = p.Close()
 				}
 			}
 		})
 	}
 	wg.Wait()
-
-	return nil
-}
-
-func save(botID int, a *Article) {
-	name := uuid.FromURL(a.URL).String() + ".json"
-	if err := store.Save(a, "news", botID, name); err != nil {
-		log.Err(err).EmbedObject(a).Msg("failed to save article")
-	}
-}
-
-func send(botID int, a *Article) {
-	// todo - api put
 }

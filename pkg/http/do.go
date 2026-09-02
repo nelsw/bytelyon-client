@@ -15,6 +15,11 @@ import (
 
 var client = http.Client{Timeout: 10 * time.Second}
 
+func Put(url string, data any, header http.Header) ([]byte, error) {
+	out, _, err := do(http.MethodPut, url, data, header)
+	return out, err
+}
+
 func do(method, URL string, body any, header http.Header) (b []byte, code int, err error) {
 
 	ctx := log.With().

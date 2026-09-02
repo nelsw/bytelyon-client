@@ -1,35 +1,16 @@
 package http
 
 import (
-	"bytes"
-	"encoding/xml"
 	"errors"
 	"math/rand"
 	"net/http"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
 const (
 	retryAttemptMax  = 3
 	retryIntervalMax = 500 * time.Millisecond
 )
-
-func GetNode(url string) (node *html.Node, err error) {
-	var out []byte
-	if out, err = Get(url, nil); err == nil {
-		node, err = html.Parse(bytes.NewReader(out))
-	}
-	return
-}
-
-func GetXML[T any](url string) (t T) {
-	if out, err := Get(url, nil); err == nil {
-		_ = xml.Unmarshal(out, &t)
-	}
-	return
-}
 
 func Get(url string, header http.Header) ([]byte, error) {
 

@@ -33,7 +33,8 @@ const (
 )
 
 var (
-	pwc        *playwright.Playwright
+	pwc *playwright.Playwright
+
 	pageScript = new(`() => {
   Object.defineProperty(window.screen, "width", { get: () => 1920 });
   Object.defineProperty(window.screen, "height", { get: () => 1080 });
@@ -105,7 +106,10 @@ var (
 )
 
 func init() {
-	opts := &playwright.RunOptions{Logger: logs.NewSlog()}
+	opts := &playwright.RunOptions{
+		Logger:              logs.NewSlog(),
+		SkipInstallBrowsers: true,
+	}
 	if err := playwright.Install(opts); err != nil {
 		panic(err)
 	} else if pwc, err = playwright.Run(opts); err != nil {
@@ -115,10 +119,35 @@ func init() {
 
 func delay(min, max int) *float64 { return new(float64(rand.Intn(max-min) + min)) }
 
+func Close(context playwright.BrowserContext) {
+
+	if state, err := context.StorageState(); err != nil {
+		log.Warn().Err(err).Msg("failed to get browser context storage state")
+	} else if err = store.Save(state, "state.json"); err != nil {
+		log.Warn().Err(err).Msg("failed to save browser context storage state")
+	} else {
+		log.Debug().Msg("saved browser context storage state")
+	}
+
+	bro := context.Browser()
+	_ = context.Close()
+	_ = bro.Close()
+}
+
+func New(b ...bool) (ctx playwright.BrowserContext, err error) {
+	headless := len(b) > 0 && b[0]
+	var bro playwright.Browser
+	if bro, err = NewBrowser(headless); err == nil {
+		ctx, err = NewBrowserContext(bro)
+	}
+	return
+}
+
 // NewBrowser creates a new Browser instance
-func NewBrowser(headless bool) (playwright.Browser, error) {
+func NewBrowser(headless ...bool) (playwright.Browser, error) {
 	return pwc.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless:          &headless,
+		Headless:          new(len(headless) > 0 && headless[0]),
+		Channel:           new("chrome"),
 		Timeout:           new(2 * 60_000.),
 		Args:              browserArgs,
 		IgnoreDefaultArgs: []string{"--enable-automation"},
@@ -250,17 +279,6 @@ func Title(page playwright.Page) string {
 	return s
 }
 
-// Content returns the document content or an empty string if the document has failed to load.
-func Content(page playwright.Page) string {
-	s, err := page.Content()
-	if err != nil {
-		log.Err(err).Str("url", page.URL()).Msg("failed to get content")
-	} else {
-		log.Trace().Str("url", page.URL()).Msg("got content")
-	}
-	return s
-}
-
 func HTML(page playwright.Page) string {
 	s, err := page.Content()
 	if err != nil {
@@ -285,23 +303,6 @@ func IMG(p playwright.Page, s ...string) []byte {
 	}
 
 	log.Trace().Str("url", p.URL()).Msg("got screenshot")
-	return b
-}
-
-// Screenshot returns the screenshot of the document as a byte array or an empty byte array if the document has failed to load.
-func Screenshot(page playwright.Page, path ...string) []byte {
-
-	opts := playwright.PageScreenshotOptions{FullPage: new(true)}
-	if len(path) > 0 {
-		opts.Path = new(path[0])
-	}
-
-	b, err := page.Screenshot(opts)
-	if err != nil {
-		log.Err(err).Str("url", page.URL()).Msg("failed to get screenshot")
-	} else {
-		log.Trace().Str("url", page.URL()).Msg("got screenshot")
-	}
 	return b
 }
 
@@ -330,77 +331,5 @@ func Scrape(url string, ctx playwright.BrowserContext) (content string, screensh
 
 	l.Debug().Send()
 
-	return Content(page), Screenshot(page)
-}
-
-func ScrapeContent(ctx playwright.BrowserContext, url string) (content string, err error) {
-
-	l := log.With().
-		Str("ƒ", "scrapeContent").
-		Str("url", url).
-		Logger()
-
-	l.Trace().Send()
-
-	var page playwright.Page
-
-	if page, err = NewPage(ctx); err != nil {
-		l.Warn().Msgf("scrape failed: %s", err.Error())
-		return
-	}
-
-	defer func() {
-		_ = page.Close()
-	}()
-
-	if err = Visit(page, url); err != nil {
-		l.Warn().Msgf("Visit failed: %s", err.Error())
-		return
-	}
-
-	if content, err = page.Content(); err != nil {
-		l.Warn().Err(err).Msg("failed to get content")
-		return
-	}
-
-	l.Debug().
-		Int("size", len(content)).
-		Send()
-
-	return
-}
-
-func New(headless bool) (ctx playwright.BrowserContext, err error) {
-	var bro playwright.Browser
-	if bro, err = NewBrowser(headless); err == nil {
-		ctx, err = NewBrowserContext(bro)
-	}
-	return
-}
-
-func It(h bool, u string) (playwright.Page, error) {
-	var p playwright.Page
-	if x, err := New(h); err != nil {
-		return nil, err
-	} else if p, err = x.NewPage(); err != nil {
-		return nil, err
-	} else if _, err = GoTo(p, u); err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-func Close(context playwright.BrowserContext) {
-
-	if state, err := context.StorageState(); err != nil {
-		log.Warn().Err(err).Msg("failed to get browser context storage state")
-	} else if err = store.Save(state, "state.json"); err != nil {
-		log.Warn().Err(err).Msg("failed to save browser context storage state")
-	} else {
-		log.Debug().Msg("saved browser context storage state")
-	}
-
-	bro := context.Browser()
-	_ = context.Close()
-	_ = bro.Close()
+	return HTML(page), IMG(page)
 }

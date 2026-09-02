@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"net/http"
 	"os"
 
 	"github.com/nelsw/bytelyon-client/pkg/file"
@@ -11,34 +12,34 @@ import (
 )
 
 type value struct {
-	AppLog string `json:"app_log" yaml:"appLog"`
-	ApiURL string `json:"api_url" yaml:"apiURL"`
-	ApiKey string `json:"api_key" yaml:"apiKey"`
-	DryRun bool   `json:"dry_run" yaml:"dryRun"`
+	Log  string `json:"log" yaml:"log"`
+	Host string `json:"host" yaml:"host"`
+	Tkn  string `json:"tkn" yaml:"tkn"`
+	Dry  bool   `json:"dry" yaml:"dry"`
 }
 
-func (v value) ok() bool { return v.ApiURL != "" && v.ApiKey != "" }
+func (v value) ok() bool { return v.Host != "" && v.Tkn != "" }
 
 var v value
 
 func init() {
 
 	/* System Env */
-	v.ApiURL = os.Getenv("API_URL")
-	v.ApiKey = os.Getenv("API_KEY")
-	v.AppLog = os.Getenv("APP_LOG")
-	v.DryRun = os.Getenv("DRY_RUN") == "true"
+	v.Host = os.Getenv("API_HOST")
+	v.Tkn = os.Getenv("API_TOKEN")
+	v.Log = os.Getenv("APP_LOG")
+	v.Dry = os.Getenv("DRY_RUN") == "true"
 	if v.ok() {
 		return
 	}
 
 	/* File Env */
 	m, _ := godotenv.Read(".env")
-	v.ApiURL, _ = m["API_URL"]
-	v.ApiKey, _ = m["API_KEY"]
-	v.AppLog, _ = m["APP_LOG"]
+	v.Host, _ = m["API_HOST"]
+	v.Tkn, _ = m["API_TOKEN"]
+	v.Log, _ = m["APP_LOG"]
 	dryRun, _ := m["DRY_RUN"]
-	v.DryRun = dryRun == "true"
+	v.Dry = dryRun == "true"
 	if v.ok() {
 		return
 	}
@@ -56,14 +57,15 @@ func init() {
 	}
 
 	/* CLI Args */
-	flag.StringVar(&v.AppLog, "log", "debug", "log level trace->disabled")
-	flag.StringVar(&v.ApiURL, "url", "https://localhost", "web app api url")
-	flag.StringVar(&v.ApiKey, "key", "", "client api key")
-	flag.BoolVar(&v.DryRun, "dry", false, "dry run")
+	flag.StringVar(&v.Log, "log", "debug", "log level trace->disabled")
+	flag.StringVar(&v.Host, "host", "https://localhost", "web app api url")
+	flag.StringVar(&v.Tkn, "tkn", "", "client api key")
+	flag.BoolVar(&v.Dry, "dry", true, "dry run")
 	flag.Parse()
 }
 
-func ApiURL() string { return v.ApiURL }
-func ApiKey() string { return v.ApiKey }
-func DryRun() bool   { return v.DryRun }
-func LogLvl() string { return v.AppLog }
+func DryRun() bool            { return v.Dry }
+func LogLvl() string          { return v.Log }
+func ApiHost() string         { return v.Host }
+func RunDry(b bool)           { v.Dry = b }
+func AuthHeader() http.Header { return http.Header{"Authorization": []string{v.Tkn}} }

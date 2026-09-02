@@ -5,13 +5,12 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/uuid"
 )
 
-func Handle(id, botID int, headless bool, query string, ignore []string) error {
+func Handle(id, botID int, headless bool, query string, ignore map[string]bool) {
 
 	r := NewResult(id, botID, query, ignore)
 
-	if err := Fetch(r, headless); err != nil {
-		return err
+	if err := Fetch(r, headless); err == nil {
+		_ = store.Save(r, "search", botID, uuid.FromURL(r.url).String()+".json")
 	}
 
-	return store.Save(r, "search", botID, uuid.FromURL(r.url).String()+".json")
 }

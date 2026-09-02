@@ -36,19 +36,15 @@ type Result struct {
 	Data map[Section][]any `json:"data"`
 }
 
-func NewResult(id, botID int, query string, ignore []string) *Result {
+func NewResult(id, botID int, query string, ignore map[string]bool) *Result {
 
 	r := Result{
 		ID:     id,
 		BotID:  botID,
 		Query:  query,
-		Ignore: make(map[string]bool),
+		Ignore: ignore,
 		Data:   make(map[Section][]any),
 		url:    "https://www.google.com?q=" + strings.ReplaceAll(query, " ", "+"),
-	}
-
-	for _, v := range ignore {
-		r.Ignore[v] = true
 	}
 
 	r.IMG = fmt.Sprintf("search/%d/%s.png", botID, uuid.FromURL(r.url))
