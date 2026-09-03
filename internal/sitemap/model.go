@@ -18,6 +18,7 @@ const (
 
 type Sitemap struct {
 	ID     int    `json:"id"`
+	BotID  int    `json:"bot_id"`
 	Domain string `json:"domain"`
 	URL    string `json:"url"`
 	*Set[string]
@@ -45,9 +46,10 @@ type Scrape struct {
 	screenshot []byte
 }
 
-func NewResult(id int, domain string) *Sitemap {
+func NewResult(id, botID int, domain string) *Sitemap {
 	return &Sitemap{
 		ID:       id,
+		BotID:    botID,
 		Domain:   domain,
 		URL:      "https://" + domain,
 		Set:      NewSet[string](),

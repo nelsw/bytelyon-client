@@ -168,7 +168,10 @@ func fetchOrganicProducts(r *Result, x playwright.BrowserContext, serp playwrigh
 	for _, l := range all {
 
 		// click the product image to display the product viewer elements
-		if err = l.Locator("img").First().Click(playwright.LocatorClickOptions{Force: new(true)}); err != nil {
+		if err = l.Locator("[role=button]").First().Click(playwright.LocatorClickOptions{
+			Force:   new(true),
+			Timeout: new(3000.0),
+		}); err != nil {
 			log.Err(err).Msg("failed to click on product image")
 			continue
 		}

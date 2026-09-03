@@ -80,26 +80,23 @@ func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 
 func (a *Article) Fill(content string) {
 
-	if a.Publisher = a.Source; strings.HasPrefix(a.Publisher, "https://www.bing") {
-		a.Source = "Bing News"
-	} else {
-		a.Publisher = "Google News"
-	}
-
-	if doc, err := model.NewDoc(content); err == nil {
-		a.Publisher = doc.Source()
+	doc, err := model.NewDoc(content)
+	if err == nil {
+		a.Publisher = a.Source
 		a.ImgURL = doc.ImgURL(a.ImgURL)
 		a.ImgAlt = doc.ImgAlt(a.Title + " - image")
 		a.Body = doc.Body()
 		a.Keywords = doc.Keywords()
 	}
 
-	if a.Publisher == "Bing News" {
-		return
-	}
-
-	if doc, err := model.NewDoc(a.Desc); err == nil {
-		a.Desc = doc.Document.Text()
-		a.Source = doc.Find("font").Text()
+	if strings.HasPrefix(a.Link, "https://www.bing") {
+		a.Source = "Bing News"
+	} else {
+		doc, err = model.NewDoc(a.Desc)
+		if err == nil {
+			a.Source = "Google News"
+			a.Desc = doc.Document.Text()
+			a.Source = doc.Find("font").Text()
+		}
 	}
 }

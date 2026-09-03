@@ -7,7 +7,7 @@ import (
 
 func Handle(id, botID int, headless bool, domain string) {
 
-	r := NewResult(id, domain)
+	r := NewResult(id, botID, domain)
 	err := Fetch(r, headless)
 	if err == nil {
 		_ = store.Save(r.Keys(), "sitemap", botID, uuid.FromURL(r.URL).String()+".json")

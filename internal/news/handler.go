@@ -31,10 +31,12 @@ func Handle(
 	defer play.Close(context)
 
 	ch := make(chan *Article)
-	for _, a := range arr {
-		ch <- a
-	}
-	close(ch)
+	go func() {
+		for _, a := range arr {
+			ch <- a
+		}
+		close(ch)
+	}()
 
 	var wg sync.WaitGroup
 	for range maxConcurrency {

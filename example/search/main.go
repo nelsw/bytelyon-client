@@ -12,7 +12,7 @@ func main() {
 		rand.Intn(1_000),
 		rand.Intn(10_000),
 		false,
-		"fire blanket for sale",
+		"yoga mats",
 		nil,
 	)
 }

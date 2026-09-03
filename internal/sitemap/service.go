@@ -1,10 +1,16 @@
 package sitemap
 
 import (
+	"fmt"
+	"strconv"
 	"sync"
 
+	"github.com/nelsw/bytelyon-client/config"
+	"github.com/nelsw/bytelyon-client/pkg/http"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
+	"github.com/nelsw/bytelyon-client/pkg/store"
+	"github.com/nelsw/bytelyon-client/pkg/uuid"
 	"github.com/rs/zerolog/log"
 )
 
@@ -30,7 +36,11 @@ func Fetch(s *Sitemap, headless bool) error {
 		// Crawl fetches urls on their own browser page and hands the results to a scraper.
 		crawlers.Go(func() {
 			for c := range s.toCrawl {
-				content, screenshot := play.Scrape(c.url, context)
+				content, screenshot := play.Scrape(
+					c.url,
+					context,
+					"sitemap/"+strconv.Itoa(s.BotID)+"/"+uuid.FromURL(c.url).String()+".png",
+				)
 				if content == "" {
 					// play.Scrape logs the reason; the url stays in the set as unreached
 					s.pending.Done()
@@ -56,8 +66,7 @@ func Fetch(s *Sitemap, headless bool) error {
 					continue
 				}
 
-				// save it!
-				//go NewPage(s.Bot, x.url, doc, x.screenshot, 0, "").Save()
+				putPage(s.BotID, x.url, s.Domain, doc)
 
 				s.Update(x.url, true)
 
@@ -101,4 +110,20 @@ func Fetch(s *Sitemap, headless bool) error {
 		Msg("sitemap built")
 
 	return nil
+}
+
+func putPage(id int, url, domain string, d *model.Doc) {
+	x := map[string]any{
+		"url":            url,
+		"domain":         domain,
+		"title":          d.Title(),
+		"meta":           d.Meta(),
+		"screenshot_key": fmt.Sprintf("sitemap/%d/%s.png", id, uuid.FromURL(url)),
+	}
+
+	if _ = store.Save(x, "sitemap", id, uuid.FromURL(url).String()+".json"); !config.DryRun() {
+		u := fmt.Sprintf("api/sitemaps/%d/pages", id)
+		_, _ = http.Put(u, x, config.AuthHeader())
+		return
+	}
 }

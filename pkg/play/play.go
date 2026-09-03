@@ -306,7 +306,7 @@ func IMG(p playwright.Page, s ...string) []byte {
 	return b
 }
 
-func Scrape(url string, ctx playwright.BrowserContext) (content string, screenshot []byte) {
+func Scrape(url string, ctx playwright.BrowserContext, s ...string) (content string, screenshot []byte) {
 	l := log.With().
 		Str("ƒ", "scrape").
 		Str("url", url).
@@ -329,7 +329,13 @@ func Scrape(url string, ctx playwright.BrowserContext) (content string, screensh
 		return
 	}
 
+	Sleep(page, 100, 450)
+
 	l.Debug().Send()
 
+	if len(s) > 0 {
+		return HTML(page), IMG(page, s[0])
+	}
 	return HTML(page), IMG(page)
+
 }
