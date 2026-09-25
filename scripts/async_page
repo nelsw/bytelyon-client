@@ -1,0 +1,233 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "seleniumbase",
+#   "playwright",
+# ]
+# ///
+import asyncio
+import argparse
+import json
+import random
+from pathlib import Path
+from urllib.parse import urldefrag
+
+from seleniumbase import cdp_driver
+from playwright.async_api import async_playwright, Page
+
+
+KEYWORD_ATTRS = ["property='article:tag'", "name='news_keywords'", "name='keywords'"]
+DESCRIPTION_ATTRS = ["name='description'", "property='og:description'", "name='twitter:description'", "name='abstract'"]
+IMG_ALT_ATTRS = ["property='og:image:alt'", "name='twitter:image:alt'"]
+IMG_SRC_ATTRS = ["name='image'", "property='og:image'", "property='og:image:secure_url'", "name='twitter:image'",
+                 "name='twitter:image:src'"]
+
+
+async def scroll(
+        page: Page,
+        min_flick: int = 400,  # px per scroll gesture
+        max_flick: int = 1200,
+        read_pause: tuple[float, float] = (0.1, 0.3),  # seconds between gestures
+        backtrack_chance: float = 0.12,  # chance of a small scroll in the opposite direction
+        long_pause_chance: float = 0.08,  # chance of stopping to "read" for a while
+        up_speed_factor: float = 1.6,  # how much faster the return trip is
+) -> None:
+    def skewed(a: float, b: float) -> float:
+        # Mostly short values with an occasional long one
+        return a + (b - a) * random.random() ** 2
+
+    async def scroll_state() -> dict:
+        return await page.evaluate(
+            """() => {
+                const el = document.scrollingElement || document.documentElement;
+                return {y: el.scrollTop, max: el.scrollHeight - innerHeight};
+            }"""
+        )
+
+    vp = page.viewport_size or await page.evaluate(
+        "() => ({ width: innerWidth, height: innerHeight })"
+    )
+
+    async def drift_mouse() -> None:
+        # Keep the cursor somewhere in the middle of the page so wheel events hit the content
+        x = random.uniform(vp["width"] * 0.3, vp["width"] * 0.7)
+        y = random.uniform(vp["height"] * 0.3, vp["height"] * 0.7)
+        await page.mouse.move(x, y, steps=random.randint(5, 15))
+
+    async def flick(distance: float, speed: float) -> None:
+        # One gesture: many small wheel events that start big and shrink, like a trackpad flick
+        ticks = random.randint(8, 20)
+        weights = [(1 - i / ticks) ** 2 + 0.05 for i in range(ticks)]
+        total = sum(weights)
+        for w in weights:
+            await page.mouse.wheel(0, distance * w / total)
+            await asyncio.sleep(random.uniform(0.012, 0.035) / speed)
+
+    async def scroll_pass(direction: int) -> None:
+        checks_at_end = 0
+        while True:
+            state = await scroll_state()
+            at_end = state["y"] >= state["max"] - 2 if direction > 0 else state["y"] <= 2
+            if at_end:
+                # At the bottom, wait briefly in case lazy-loaded content makes the page longer
+                if direction > 0 and checks_at_end < 2:
+                    checks_at_end += 1
+                    await asyncio.sleep(random.uniform(0.6, 1.2))
+                    continue
+                break
+            checks_at_end = 0
+
+            speed = 1 if direction > 0 else up_speed_factor
+            dist = random.uniform(min_flick, max_flick) * speed * direction
+            if random.random() < backtrack_chance:
+                dist = -direction * random.uniform(60, 250)
+
+            await flick(dist, speed)
+
+            pause = skewed(*read_pause) / speed
+            if random.random() < long_pause_chance:
+                pause += random.uniform(1.5, 4.0)
+            if random.random() < 0.25:
+                await drift_mouse()
+            await asyncio.sleep(pause)
+
+    await drift_mouse()
+    await scroll_pass(1)  # down
+    await asyncio.sleep(random.uniform(0.8, 2.5))  # pause at the bottom
+    await scroll_pass(-1)  # back up
+
+
+async def collect_links(page: Page) -> list[str]:
+    hrefs = await page.locator('a[href]').evaluate_all("""
+els => els.map(el => el.href.trim()).filter(s => s.startsWith('http'))
+""")
+    return sorted({urldefrag(href).url for href in hrefs})
+
+
+async def collect_all_meta(page: Page) -> dict[str, str | list[str]]:
+    pairs = await page.locator('meta[content]').evaluate_all("""
+els => els
+  .map(el => [
+      (el.getAttribute('name') || el.getAttribute('property') || el.getAttribute('http-equiv') || el.getAttribute('itemprop') || '').trim(),
+      (el.getAttribute('content') || '').trim(),
+  ])
+  .filter(([key, val]) => key !== '' && val !== '')
+""")
+    meta: dict[str, list[str]] = {}
+    for key, val in pairs:
+        vals = meta.setdefault(key, [])
+        if val not in vals:
+            vals.append(val)
+    return {key: vals[0] if len(vals) == 1 else vals for key, vals in meta.items()}
+
+async def collect_one_meta(page: Page, attrs: list[str]) -> str:
+    for attr in attrs:
+        try:
+            for elem in await page.locator(f"meta[{attr}]").all():
+                text = await elem.get_attribute('content', timeout=2_500)
+                if text is not None and text != "":
+                    return text
+        except TimeoutError:
+            pass
+    return ''
+
+
+async def collect_body(page: Page) -> str:
+    text = []
+    for selector in ["article", "main", "body", "html"]:
+        if await page.locator(selector).count() == 0:
+            continue
+        for p in await page.locator(selector).locator("p").all():
+            txt = await p.text_content()
+            if txt is None:
+                continue
+            text.append(txt.strip())
+    out = " ".join(text)
+    out = out.replace(
+        "This is a modal window. Beginning of dialog window. Escape will cancel and close the window. End of dialog window.",
+        "",
+    )
+    return out
+
+
+async def handle(
+        path: str,
+        name: str,
+        url: str,
+        page:Page,
+) -> None:
+
+    await page.goto(url=url)
+    await page.wait_for_load_state('domcontentloaded', timeout=5_000)
+    await scroll(page)
+
+    # save page screenshot
+    img_key = f"{path}/{name}.png"
+    await page.screenshot(full_page=True, path=img_key)
+
+    # save page content
+    src = await page.content()
+    src_key = f"{path}/{name}.html"
+    with open(src_key, "w", encoding="utf-8") as file:
+        file.write(src)
+
+    # save page data
+    data = {
+        'title': await page.title(),
+        'meta': await collect_all_meta(page),
+        'body': await collect_body(page),
+        'links': await collect_links(page),
+        'img_src': await collect_one_meta(page, IMG_SRC_ATTRS),
+        'img_alt': await collect_one_meta(page, IMG_ALT_ATTRS),
+        'description': await collect_one_meta(page, DESCRIPTION_ATTRS),
+        'keywords': (await collect_one_meta(page, KEYWORD_ATTRS)).split(','),
+        'screenshot_key': img_key,
+        'content_key': src_key,
+    }
+
+    with open(f"{path}/{name}.json", "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
+
+
+async def main(
+        path: str,
+        name: str,
+        url: str,
+        headless: bool,
+        proxy: str|None,
+) -> None:
+    Path(path).mkdir(parents=True, exist_ok=True)
+    driver = await cdp_driver.start_async(headless=headless, use_chromium=True, proxy=proxy)
+    endpoint_url = driver.get_endpoint_url()
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(endpoint_url)
+        await handle(path, name, url, browser.contexts[0].pages[0])
+        await browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the page 🤖")
+    _ = parser.add_argument('-p', '--path', help='File path', type=str, default='data/0/0')
+    _ = parser.add_argument('-n', '--name', help='File name', type=str)
+    _ = parser.add_argument('-u', '--url', help='Page URL', type=str)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = None
+    if args.proxy_host != '':
+        proxy_val = f"{args.proxy_scheme}://{args.proxy_user}:{args.proxy_pass}@{args.proxy_host}:{args.proxy_port}"
+
+    asyncio.run(main(
+        path=args.path,
+        name=args.name,
+        url=args.url,
+        headless=args.mode,
+        proxy=proxy_val,
+    ))

@@ -2,12 +2,37 @@ package news
 
 import (
 	"encoding/xml"
+	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
-	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog"
 )
+
+const maxAsync = 10
+
+type job struct {
+}
+
+type Source string
+
+const (
+	BingNews   Source = "Bing News"
+	GoogleNews Source = "Google News"
+)
+
+func (s Source) URL(query string) string {
+	query = strings.ReplaceAll(query, "+", "+")
+	query = url.QueryEscape(query)
+	switch s {
+	case BingNews:
+		return fmt.Sprintf("https://www.bing.com/news/search?format=rss&q=%s", query)
+	case GoogleNews:
+		return fmt.Sprintf("https://news.google.com/rss/search?q=%s&hl=en-US&gl=US&ceid=US:en", query)
+	}
+	return fmt.Sprintf("Unknown News Source %T", s)
+}
 
 type RSS struct {
 	XMLName xml.Name `xml:"rss"`
@@ -32,39 +57,6 @@ type Article struct {
 	URL       string   `json:"url"`
 }
 
-func (a *Article) IsAfter(t time.Time) bool {
-	if d, err := time.Parse(time.RFC1123, a.Date); err != nil {
-		return false
-	} else {
-		return d.After(t)
-	}
-}
-
-func (a *Article) IsBlacklisted(m map[string]bool) bool {
-
-	if len(m) == 0 {
-		return false
-	}
-
-	arr := append([]string{
-		a.Title,
-		a.Body,
-		a.Source,
-		a.Desc,
-		a.ImgAlt,
-		a.Publisher,
-	}, a.Keywords...)
-
-	for _, sf := range arr {
-		for s := range strings.SplitSeq(sf, " ") {
-			if _, exists := m[s]; exists {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 	evt.Str("t", a.Title).
 		Str("#", a.URL).
@@ -78,25 +70,24 @@ func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 		Int("b", len(a.Body))
 }
 
-func (a *Article) Fill(content string) {
+func (a *Article) IsGoogleNews() bool {
+	return strings.HasPrefix(a.Link, "https://news.google")
+}
 
-	doc, err := model.NewDoc(content)
-	if err == nil {
-		a.Publisher = a.Source
-		a.ImgURL = doc.ImgURL(a.ImgURL)
-		a.ImgAlt = doc.ImgAlt(a.Title + " - image")
-		a.Body = doc.Body()
-		a.Keywords = doc.Keywords()
+func (a *Article) PublishedAt() time.Time {
+	if d, err := time.Parse(time.RFC1123, a.Date); err != nil {
+		return d
 	}
+	return time.Now()
+}
 
-	if strings.HasPrefix(a.Link, "https://www.bing") {
-		a.Source = "Bing News"
-	} else {
-		doc, err = model.NewDoc(a.Desc)
-		if err == nil {
-			a.Source = "Google News"
-			a.Desc = doc.Document.Text()
-			a.Source = doc.Find("font").Text()
-		}
-	}
+func (a *Article) Words() []string {
+	return append([]string{
+		a.Title,
+		a.Body,
+		a.Source,
+		a.Desc,
+		a.ImgAlt,
+		a.Publisher,
+	}, a.Keywords...)
 }

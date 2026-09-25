@@ -1,129 +1,98 @@
 package sitemap
 
 import (
+	"encoding/json"
 	"fmt"
-	"strconv"
+	"os"
+	"strings"
 	"sync"
 
-	"github.com/nelsw/bytelyon-client/config"
-	"github.com/nelsw/bytelyon-client/pkg/http"
+	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/model"
-	"github.com/nelsw/bytelyon-client/pkg/play"
-	"github.com/nelsw/bytelyon-client/pkg/store"
-	"github.com/nelsw/bytelyon-client/pkg/uuid"
+	"github.com/nelsw/bytelyon-client/pkg/s3"
+	"github.com/nelsw/bytelyon-client/pkg/scrape"
+	"github.com/nelsw/bytelyon-client/pkg/url"
 	"github.com/rs/zerolog/log"
 )
 
-// Fetch walks the domain from its root, fetching at most P pages at a time, and
-// records every url it reaches. It returns once nothing is left to visit.
-//
-// Work moves in a cycle: the frontier feeds toCrawl, crawlers fetch and feed
-// toScrape, scrapers parse and feed the frontier again. Only the frontier is
-// unbounded, which is what keeps the cycle from deadlocking on itself.
-func Fetch(s *Sitemap, headless bool) error {
-	context, err := play.New(headless)
-	if err != nil {
-		return err
-	}
-	defer play.Close(context)
+func Build(b bot.Model) {
 
-	// seed the frontier first so the crawl is never mistaken for finished below
-	s.Push(&Crawl{url: "https://" + s.Domain, depth: s.D})
+	m := From(b)
 
-	// fetching is the slow half, so P is the count of browser pages open at once
-	var crawlers sync.WaitGroup
-	for range s.P {
-		// Crawl fetches urls on their own browser page and hands the results to a scraper.
-		crawlers.Go(func() {
-			for c := range s.toCrawl {
-				content, screenshot := play.Scrape(
-					c.url,
-					context,
-					"sitemap/"+strconv.Itoa(s.BotID)+"/"+uuid.FromURL(c.url).String()+".png",
-				)
-				if content == "" {
-					// play.Scrape logs the reason; the url stays in the set as unreached
-					s.pending.Done()
+	var g sync.WaitGroup
+
+	q := model.NewQueue[*model.Entry[string, int]](
+		model.NewEntry("https://"+b.Query, maxDepth),
+	)
+
+	c := make(chan *model.Entry[string, int])
+
+	for range maxAsync {
+		g.Go(func() {
+			for e := range c {
+				if m.Has(e.Key) {
 					continue
 				}
-				s.toScrape <- &Scrape{Crawl: c, content: content, screenshot: screenshot}
-			}
-		})
-	}
 
-	// parsing is cpu bound and comparatively cheap, but it should not be the
-	// bottleneck that leaves browser pages idle, so it gets the same width
-	var scrapers sync.WaitGroup
-	for range s.P {
-		// Scrape parses a fetched page, marks it reached, and feeds the on-domain links it finds back to the frontier.
-		scrapers.Go(func() {
-			for x := range s.toScrape {
-
-				doc, err := model.NewDoc(x.content)
+				key, err := scrape.Page(b.Headless, e.Key, "sitemap", b.ID)
 				if err != nil {
-					log.Warn().Err(err).Str("url", x.url).Msg("failed to parse document")
-					s.pending.Done()
+					log.Warn().Err(err).Msg("failed to scrape page")
 					continue
 				}
 
-				putPage(s.BotID, x.url, s.Domain, doc)
+				from := key + ".png"
+				to := strings.ReplaceAll(from, ".storage", "bots")
+				_ = s3.Move(from, to)
 
-				s.Update(x.url, true)
+				var bytes []byte
+				if bytes, err = os.ReadFile(key + ".json"); err != nil {
+					log.Warn().Err(err).Msg("failed to read page")
+					continue
+				}
 
-				for _, href := range doc.HREFs() {
-					if next, ok := s.Parse(href); ok {
-						s.Push(&Crawl{url: next, depth: x.depth - 1})
+				var d model.Data
+				if err = json.Unmarshal(bytes, &d); err != nil {
+					log.Warn().Err(err).Msg("failed to unmarshal page")
+					continue
+				}
+
+				SavePage(m, d)
+				m.Add(e.Key)
+				g.Done()
+
+				nextDepth := e.Val - 1
+				if nextDepth < 0 {
+					continue
+				}
+
+				for _, link := range d.GetSlice("links") {
+					u := fmt.Sprintf("%v", link)
+					if url.Domain(u) == b.Query && !m.Has(u) {
+						q.Push(model.NewEntry(u, nextDepth))
+						g.Add(1)
 					}
 				}
-
-				// every child is admitted before its parent is retired, so the count only
-				// reaches zero once the last page has given up its links
-				s.pending.Done()
 			}
 		})
 	}
 
 	go func() {
 		for {
-			c, ok := s.frontier.Pop()
-			if !ok {
+			if t, ok := q.Pop(); ok {
+				c <- t
+			} else {
 				break
 			}
-			s.toCrawl <- c
 		}
-		close(s.toCrawl)
+		close(c)
 	}()
 
-	// with nothing in flight, no url can discover another one, so we are done
 	go func() {
-		s.pending.Wait()
-		s.frontier.Close()
+		q.Close()
 	}()
 
-	crawlers.Wait()
-	close(s.toScrape)
-	scrapers.Wait()
+	g.Wait()
 
-	log.Info().
-		Str("domain", s.Domain).
-		Int("pages", len(s.Keys())).
-		Msg("sitemap built")
-
-	return nil
-}
-
-func putPage(id int, url, domain string, d *model.Doc) {
-	x := map[string]any{
-		"url":            url,
-		"domain":         domain,
-		"title":          d.Title(),
-		"meta":           d.Meta(),
-		"screenshot_key": fmt.Sprintf("sitemap/%d/%s.png", id, uuid.FromURL(url)),
-	}
-
-	if _ = store.Save(x, "sitemap", id, uuid.FromURL(url).String()+".json"); !config.DryRun() {
-		u := fmt.Sprintf("api/sitemaps/%d/pages", id)
-		_, _ = http.Put(u, x, config.AuthHeader())
-		return
-	}
+	Save(m.ID, m.Keys())
+	bot.Update(b.ID)
 }

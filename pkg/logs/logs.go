@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nelsw/bytelyon-client/config"
 	"github.com/nelsw/bytelyon-client/pkg/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -24,10 +23,19 @@ const (
 )
 
 var f *os.File
+var initd bool
 
 func init() {
+	Init()
+}
+
+func Init() {
+	if initd {
+		return
+	}
+	initd = true
 	var err error
-	if f, err = store.Create("logs", time.Now().UTC().Format(time.RFC3339)+".log"); err != nil {
+	if f, err = store.Create("logs", time.Now().UTC().Format(time.DateOnly)+".log"); err != nil {
 		panic(err)
 	}
 	log.Logger = MakeZerolog()
@@ -35,7 +43,7 @@ func init() {
 
 func MakeZerolog() zerolog.Logger {
 
-	lvl, err := zerolog.ParseLevel(config.LogLvl())
+	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil {
 		lvl = zerolog.TraceLevel
 	}
@@ -83,7 +91,7 @@ func MakeZerolog() zerolog.Logger {
 func NewSlog() *slog.Logger {
 
 	var sl slog.Level
-	switch config.LogLvl() {
+	switch os.Getenv("LOG_LEVEL") {
 	case "debug":
 		sl = slog.LevelDebug
 	case "info":

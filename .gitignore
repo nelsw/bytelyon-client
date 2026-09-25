@@ -5,3 +5,7 @@ state.json
 *.log
 *.env*
 *.storage/
+/scripts/.idea/
+/scripts/pyproject.toml
+/scripts/.venv/
+/scripts/uv.lock

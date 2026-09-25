@@ -44,17 +44,21 @@ lint:
 
 test: deps
 	@make ƒø name=test
-	@go test -v ./...
+	@godotenv -f .env go test -v ./...
 	@make ƒç name=test
 
 rich: deps
 	@make ƒø name=rich
-	@richgo test -v ./...
+	@godotenv -f .env richgo test -v ./...
 	@make ƒç name=rich
 
-deps:
+deps: install
 	@make ƒø name=deps
 	@go mod tidy
 	@go get -v ./...
 	@go mod tidy
 	@make ƒç name=deps
+
+install:
+	@go get -u github.com/kyoh86/richgo
+	@go install github.com/joho/godotenv/cmd/godotenv@latest

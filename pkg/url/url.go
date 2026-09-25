@@ -2,7 +2,6 @@ package url
 
 import (
 	"net/url"
-	"regexp"
 	"strings"
 )
 
@@ -11,10 +10,6 @@ type Values url.Values
 func (v Values) Encode() []byte {
 	return []byte(url.Values(v).Encode())
 }
-
-var (
-	browserFunction = regexp.MustCompile(`^(mailto|tel|sms|fax|callto|geo|javascript|about):.*`)
-)
 
 func RemoveProtocol(url string) string {
 	url = Clean(url)
@@ -82,8 +77,4 @@ func Path(url string) (s string) {
 	_, s, _ = strings.Cut(url, "/")
 	s, _, _ = strings.Cut(s, "?")
 	return
-}
-
-func IsBrowserFunction(s string) bool {
-	return browserFunction.MatchString(s)
 }
