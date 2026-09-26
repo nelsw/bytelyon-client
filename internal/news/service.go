@@ -3,21 +3,23 @@ package news
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/http"
 	"github.com/nelsw/bytelyon-client/pkg/model"
-	"github.com/nelsw/bytelyon-client/pkg/scrape"
+	"github.com/nelsw/bytelyon-client/pkg/play"
+	"github.com/nelsw/bytelyon-client/pkg/s3"
 	"github.com/rs/zerolog/log"
 )
 
-func Build(m bot.Model) {
+func Fetch(m *bot.Model) {
 
-	q := model.NewQueue[*Article]()
-	var g sync.WaitGroup
-	c := make(chan *Article)
+	var arr []*Article
 
 	ƒ := func(s Source) {
 
@@ -49,8 +51,7 @@ func Build(m bot.Model) {
 					a.Source = "Bing News"
 				}
 
-				g.Add(1)
-				q.Push(a)
+				arr = append(arr, a)
 			})
 		}
 		wg.Wait()
@@ -61,60 +62,61 @@ func Build(m bot.Model) {
 	wg.Go(func() { ƒ(GoogleNews) })
 	wg.Wait()
 
-	log.Info().Int("size", q.Len()).Msg("articles")
-
-	tasks := make(chan *Article)
-	for range maxAsync {
-		wg.Go(func() {
-			for a := range tasks {
-
-				key, err := scrape.Page(m.Headless, a.URL, "news", m.ID)
-				if err != nil {
-					log.Warn().Err(err).Msg("failed to scrape page")
-					continue
-				}
-
-				var bytes []byte
-				if bytes, err = os.ReadFile(key + ".json"); err != nil {
-					log.Warn().Err(err).Msg("failed to read page")
-					continue
-				}
-
-				var d model.Data
-				if err = json.Unmarshal(bytes, &d); err != nil {
-					log.Warn().Err(err).Msg("failed to unmarshal page")
-					continue
-				}
-
-				d.Put("bot_id", m.ID)
-				d.Put("source", a.Source)
-				d.Put("title", a.Title)
-				d.Put("publisher", a.Publisher)
-				if a.Desc != "" {
-					d.Put("description", a.Desc)
-				}
-
-				Save(d)
-			}
-		})
+	s := model.MakeSet[string]()
+	for _, a := range arr {
+		s.Add(a.URL)
 	}
 
-	go func() {
-		for {
-			if t, ok := q.Pop(); ok {
-				tasks <- t
-			} else {
-				break
-			}
+	log.Info().Int("size", s.Len()).Msg("articles")
+	if s.Len() == 0 {
+		return
+	}
+
+	if err := play.News(m.Headless, s.Keys()); err != nil {
+		log.Err(err).Send()
+	}
+
+	path := filepath.Join(".storage", "sitemap", strconv.Itoa(m.ID))
+
+	for _, a := range arr {
+		p := filepath.Join(path, uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String())
+
+		from := p + ".html"
+		to := strings.ReplaceAll(from, ".storage/", "")
+		_ = s3.Move(from, to)
+		//_ = os.Remove(from)
+
+		from = p + ".png"
+		to = strings.ReplaceAll(from, ".storage/", "")
+		_ = s3.Move(from, to)
+		//_ = os.Remove(from)
+
+		from = p + ".json"
+		bytes, err := os.ReadFile(from)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to read page")
+			return
 		}
-		close(c)
-	}()
+		//_ = os.Remove(from)
 
-	go func() {
-		q.Close()
-	}()
+		var d model.Data[string, any]
+		if err = json.Unmarshal(bytes, &d); err != nil {
+			log.Warn().Err(err).Msg("failed to unmarshal page")
+			return
+		}
 
-	g.Wait()
+		d.Put("bot_id", m.ID)
+		d.Put("source", a.Source)
+		d.Put("title", a.Title)
+		d.Put("publisher", a.Publisher)
+		if a.Desc != "" {
+			d.Put("description", a.Desc)
+		}
 
-	bot.Update(m.ID)
+		Save(m.ID, a)
+	}
+}
+
+func save() {
+
 }

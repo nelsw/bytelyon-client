@@ -175,6 +175,7 @@ async def handle(
 
     # save page data
     data = {
+        'url': url,
         'title': await page.title(),
         'meta': await collect_all_meta(page),
         'body': await collect_body(page),

@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const maxAsync = 10
+const maxAsync = 2
 
 type job struct {
 }
@@ -75,8 +75,10 @@ func (a *Article) IsGoogleNews() bool {
 }
 
 func (a *Article) PublishedAt() time.Time {
-	if d, err := time.Parse(time.RFC1123, a.Date); err != nil {
-		return d
+	for _, layout := range []string{time.RFC1123, time.RFC1123Z} {
+		if d, err := time.Parse(layout, a.Date); err == nil {
+			return d
+		}
 	}
 	return time.Now()
 }

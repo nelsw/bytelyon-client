@@ -39,56 +39,65 @@ func Close() {
 	client.Close()
 }
 
-func QueryRow(ctx context.Context, sql string, args []any, dest any) error {
-	return client.QueryRow(ctx, sql, args...).Scan(&dest)
+func QueryRow(ctx context.Context, sql string, args []any, dest ...any) error {
+	return client.QueryRow(ctx, sql, args...).Scan(dest...)
 }
 
 func Query(sql string, args ...any) (pgx.Rows, error) {
 	return client.Query(context.Background(), sql, args...)
 }
 
-func Exec(sql string, args map[string]any) error {
+// Exec uses strict named args so a missing or misspelled arg errors instead of silently writing NULL.
+func Exec(sql string, args pgx.StrictNamedArgs) error {
 	_, err := client.Exec(context.Background(), sql, args)
 	return err
 }
 
-func SearchBots(types []string) (pgx.Rows, error) {
-	query := `
-SELECT bss.id,
-       bss.type,
-       bss.blacklist,
-       bss.headless,
-       bss.query,
-       CASE
-           WHEN bss.type = 'search' THEN serp_id
-           WHEN bss.type = 'sitemap' THEN sitemap_id
-           ELSE 0
-           END AS child_id
-FROM (SELECT bots.id,
-             bots.query,
-             bots.headless,
-             bots.type,
-             bots.blacklist,
-             bots.last_run_at,
-             serps.bot_id    AS serp_id,
-             sitemaps.bot_id AS sitemap_id,
-             CASE
-                 WHEN bots.frequency = 'monthly' THEN 60 * 24 * 7 * 52
-                 WHEN bots.frequency = 'weekly' THEN 60 * 24 * 7
-                 WHEN bots.frequency = 'daily' THEN 60 * 24
-                 WHEN bots.frequency = 'hourly' THEN 60
-                 ELSE 0
-                 END         AS minutes
-      FROM bots
-               LEFT JOIN serps ON bots.id = serps.bot_id AND bots.type = 'search'
-               LEFT JOIN sitemaps ON bots.id = sitemaps.bot_id AND bots.type = 'sitemap'
-      WHERE bots.enabled IS TRUE) AS bss
-WHERE bss.type = ANY($1) 
-  AND (
-    bss.last_run_at IS NULL OR
-    bss.last_run_at + (bss.minutes * INTERVAL '1 minute') <= NOW()
-    )
-ORDER BY (NOW() - (bss.last_run_at + (bss.minutes * INTERVAL '1 minute'))) DESC;`
+// DueBots selects enabled bots that are due to run, never-run and most overdue first.
+// child_id is the id of the bot's serps/sitemaps row (0 for news bots, or when no row exists).
+const DueBots = `
+SELECT bots.id,
+       bots.type,
+       bots.blacklist,
+       bots.headless,
+       bots.query,
+       bots.last_run_at,
+       COALESCE(CASE bots.type
+                    WHEN 'search' THEN (SELECT serps.id
+                                        FROM serps
+                                        WHERE serps.bot_id = bots.id
+                                          AND serps.deleted_at IS NULL
+                                        ORDER BY serps.id DESC
+                                        LIMIT 1)
+                    WHEN 'sitemap' THEN (SELECT sitemaps.id
+                                         FROM sitemaps
+                                         WHERE sitemaps.bot_id = bots.id
+                                           AND sitemaps.domain = bots.query
+                                           AND sitemaps.deleted_at IS NULL
+                                         LIMIT 1)
+                    END, 0) AS child_id
+FROM bots
+         CROSS JOIN LATERAL (SELECT bots.last_run_at + CASE bots.frequency
+                                                           WHEN 'hourly' THEN INTERVAL '1 hour'
+                                                           WHEN 'daily' THEN INTERVAL '1 day'
+                                                           WHEN 'weekly' THEN INTERVAL '1 week'
+                                                           WHEN 'monthly' THEN INTERVAL '1 month'
+                                                           ELSE INTERVAL '0'
+                                                           END AS at) AS due
+WHERE bots.enabled IS TRUE
+  AND bots.type = ANY (@types)
+  AND (due.at IS NULL OR due.at <= NOW())
+ORDER BY due.at NULLS FIRST, bots.id
+`
 
-	return client.Query(context.Background(), query, types)
+func SearchBots(types []string) (pgx.Rows, error) {
+	return client.Query(context.Background(), DueBots, pgx.NamedArgs{"types": types})
+}
+
+// Varchar trims s to at most n characters so it fits a varchar(n) column.
+func Varchar(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }

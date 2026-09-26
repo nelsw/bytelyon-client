@@ -23,6 +23,14 @@ func (s *SyncSet[K]) Add(key K) bool {
 	return s.z.Add(key)
 }
 
+func (s *SyncSet[K]) AddAll(keys []K) {
+	s.x.Lock()
+	defer s.x.Unlock()
+	for _, key := range keys {
+		s.z.Add(key)
+	}
+}
+
 func (s *SyncSet[K]) Has(key K) bool {
 	s.x.RLock()
 	defer s.x.RUnlock()

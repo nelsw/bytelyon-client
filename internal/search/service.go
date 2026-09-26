@@ -3,46 +3,48 @@ package search
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/model"
+	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/nelsw/bytelyon-client/pkg/s3"
-	"github.com/nelsw/bytelyon-client/pkg/scrape"
 	"github.com/rs/zerolog/log"
 )
 
-func Build(b bot.Model) {
+func Build(b *bot.Model) {
 
-	key, err := scrape.Serp(b.Headless, b.Query, b.Type, b.ID)
+	err := play.Search(b.ID, b.Query, b.Headless)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to scrape page")
 		return
 	}
 
-	from := key + ".png"
-	imgKey := strings.ReplaceAll(from, ".storage", "bots")
-	_ = s3.Move(from, imgKey)
+	p := filepath.Join(".storage", "search", strconv.Itoa(b.ID), b.Query)
 
-	from = key + ".html"
-	srcKey := strings.ReplaceAll(from, ".storage", "bots")
+	from := p + ".html"
+	srcKey := strings.ReplaceAll(from, ".storage/", "")
 	_ = s3.Move(from, srcKey)
+	//_ = os.Remove(from)
+
+	from = p + ".png"
+	imgKey := strings.ReplaceAll(from, ".storage/", "")
+	_ = s3.Move(from, imgKey)
+	//_ = os.Remove(from)
 
 	var bytes []byte
-	if bytes, err = os.ReadFile(key + ".json"); err != nil {
+	if bytes, err = os.ReadFile(p + ".json"); err != nil {
 		log.Warn().Err(err).Msg("failed to read serp")
 		return
 	}
 
-	var d model.Data
+	var d model.Data[string, any]
 	if err = json.Unmarshal(bytes, &d); err != nil {
 		log.Warn().Err(err).Msg("failed to unmarshal serp")
 		return
 	}
 
-	d.Put("id", b.ChildID)
-	d.Put("screenshot_key", imgKey)
-	d.Put("content_key", srcKey)
-
-	Save(d)
+	Save(b.ChildID, d, imgKey, srcKey)
 }

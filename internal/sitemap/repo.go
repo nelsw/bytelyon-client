@@ -1,39 +1,65 @@
 package sitemap
 
 import (
-	"os"
-
-	"github.com/goforj/godump"
+	"github.com/jackc/pgx/v5"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/postgres"
 	"github.com/rs/zerolog/log"
 )
 
-func SavePage(m Model, d model.Data) {
+const pageableType = "App\\Models\\Sitemap"
+
+func SavePage(pid int, domain, url, title, imgKey string, meta map[string]any) {
 	sql := `
-INSERT INTO pages (url, domain, title, screenshot_key, meta, pageable_type, pageable_id, created_at, updated_at)
-VALUES (@url, @domain, @screenshot_key, @meta, @pageable_type, @pageable_id, NOW(), NOW())
-ON CONFLICT (pageable_type, pageable_id, url)
-DO UPDATE SET title = @title, 
-              meta = @meta, 
-              screenshot_key = @screenshot_key,
+INSERT INTO pages (
+                   domain,
+                   meta,
+                   pageable_id,
+                   pageable_type,
+                   screenshot_key,
+                   title,
+                   url,
+                   created_at,
+                   updated_at
+                   )
+VALUES (
+        @domain,
+        @meta,
+        @pageable_id,
+        @pageable_type,
+        @screenshot_key,
+        @title,
+        @url,
+        NOW(),
+        NOW()
+        )
+ON CONFLICT (
+    pageable_type,
+    pageable_id,
+    url
+    )
+DO UPDATE SET title = excluded.title,
+              meta = excluded.meta,
+              screenshot_key = excluded.screenshot_key,
               updated_at = NOW()
 `
-	err := postgres.Exec(sql, model.Data{
-		"url":            d.Get("url"),
-		"domain":         m.Bot.Query,
-		"title":          d.Get("title"),
-		"screenshot_key": d.Get("screenshot_key"),
-		"meta":           d.Get("meta"),
-		"pageable_type":  `App\Models\Sitemap`,
-		"pageable_id":    m.ID,
-	})
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	d := model.Data[string, any]{
+		"domain":         domain,
+		"meta":           meta,
+		"pageable_id":    pid,
+		"pageable_type":  pageableType,
+		"screenshot_key": imgKey,
+		"url":            url,
+		"title":          postgres.Varchar(title, 1024),
+	}
 
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to save page")
-		if os.Getenv("APP_MODE") == "test" {
-			godump.DumpJSON(m, d)
-		}
+	if err := postgres.Exec(sql, pgx.StrictNamedArgs(d)); err != nil {
+		log.Err(err).Msgf("failed to save page: %s", d)
+	} else {
+		log.Trace().Msgf("saved page: %s", d)
 	}
 }
 
@@ -44,17 +70,12 @@ SET urls = @urls,
 updated_at = NOW()
 WHERE id = @id
 `
-	d := model.Data{
+	d := pgx.StrictNamedArgs{
 		"id":   id,
 		"urls": urls,
 	}
 
-	err := postgres.Exec(sql, d)
-
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to save sitemap")
-		if os.Getenv("APP_MODE") == "test" {
-			godump.DumpJSON(d)
-		}
+	if err := postgres.Exec(sql, d); err != nil {
+		log.Err(err).Msgf("failed to save sitemap: %d", id)
 	}
 }

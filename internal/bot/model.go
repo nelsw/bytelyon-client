@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nelsw/bytelyon-client/pkg/model"
+	"github.com/rs/zerolog"
 )
 
 var typeRegex = regexp.MustCompile(`^(news|search|sitemap)$`)
@@ -17,9 +18,9 @@ type Model struct {
 
 	ChildID int `db:"child_id"`
 
-	Type `db:"type"`
+	Type Type `db:"type"`
 
-	Blacklist `db:"blacklist"`
+	Blacklist Blacklist `db:"blacklist"`
 
 	Headless bool `db:"headless"`
 
@@ -28,20 +29,24 @@ type Model struct {
 	LastRunAt *time.Time `db:"last_run_at"`
 }
 
-//func (j *Job) MarshalZerologObject(evt *zerolog.Event) {
-//	evt.Int("#", j.ID).
-//		Str("q", j.Query).
-//		Any("t", j.Type).
-//		Any("x", j.Blacklist).
-//		Time("@", j.WorkedAt)
-//}
+func (m *Model) MarshalZerologObject(evt *zerolog.Event) {
+	ranAt := "Never"
+	if m.LastRunAt != nil {
+		ranAt = m.LastRunAt.Format(time.DateTime)
+	}
+	evt.Int("#", m.ID).
+		Str("q", m.Query).
+		Any("t", m.Type).
+		Any("x", m.Blacklist).
+		Str("@", ranAt)
+}
 
 type Type string
 
 const (
 	NewsType    Type = "news"
-	SearchType       = "search"
-	SitemapType      = "sitemap"
+	SearchType  Type = "search"
+	SitemapType Type = "sitemap"
 )
 
 func (t *Type) Scan(value any) error {

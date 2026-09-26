@@ -14,7 +14,7 @@ import (
 func TestQueryRow(t *testing.T) {
 	fmt.Println("addr", os.Getenv("SERVER_ADDR"))
 	var str string
-	err := QueryRow(context.Background(), "SELECT version();", nil, str)
+	err := QueryRow(context.Background(), "SELECT version();", nil, &str)
 	if err != nil {
 		t.Fatal(err)
 	}

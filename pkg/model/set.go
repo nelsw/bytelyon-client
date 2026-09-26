@@ -7,12 +7,12 @@ import (
 )
 
 type Set[T cmp.Ordered] struct {
-	z Map[T, bool]
+	z Data[T, bool]
 }
 
 func MakeSet[K cmp.Ordered]() Set[K] {
 	return Set[K]{
-		z: make(Map[K, bool]),
+		z: make(Data[K, bool]),
 	}
 }
 

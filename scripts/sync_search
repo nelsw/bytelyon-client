@@ -133,7 +133,6 @@ def _final_url(page: Page, link: str, timeout_ms: int) -> str:
 
 def handle(
         path: str,
-        name: str,
         query: str,
         page: Page,
 ) -> None:
@@ -146,10 +145,10 @@ def handle(
     page.wait_for_selector('#appbar')
 
     # save page screenshot
-    page.screenshot(full_page=True, path=f"{path}/{name}.png")
+    page.screenshot(full_page=True, path=f"{path}/{query}.png")
 
     # save page content
-    with open(f"{path}/{name}.html", "w", encoding="utf-8") as file:
+    with open(f"{path}/{query}.html", "w", encoding="utf-8") as file:
         file.write(page.content())
 
 
@@ -281,7 +280,7 @@ def handle(
         for i, value in enumerate(raw.get("similarQueries", []))
     ]
 
-    with open(f"{path}/{name}.json", "w", encoding="utf-8") as file:
+    with open(f"{path}/{query}.json", "w", encoding="utf-8") as file:
         json.dump({
             "sponsored_results": sponsored_results,
             "sponsored_products": sponsored_products,
@@ -293,7 +292,6 @@ def handle(
 
 def main(
         path: str,
-        name: str,
         query: str,
         headless: bool,
         proxy: ProxySettings | None,
@@ -303,14 +301,13 @@ def main(
         browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
     else:
         browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
-    handle(path, name, query, browser.new_page())
+    handle(path, query, browser.new_page())
     browser.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the page 🤖")
-    _ = parser.add_argument('-p', '--path', help='File path', type=str, default='data/0/0')
-    _ = parser.add_argument('-n', '--name', help='File name', type=str)
+    _ = parser.add_argument('-i', '--id', type=int, default='')
     _ = parser.add_argument('-q', '--query', help='Search Query', type=str)
     _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
     _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
@@ -326,11 +323,11 @@ if __name__ == "__main__":
             username=args.proxy_user,
             password=args.proxy_pass,
             server=f"{args.proxy_scheme}://{args.proxy_host}:{args.proxy_port}",
+            bypass='.google.com'
         )
 
     main(
-        path=args.path,
-        name=args.name,
+        path=f".storage/search/{args.id}/{args.query}",
         query=args.query,
         headless=args.mode,
         proxy=proxy_val,

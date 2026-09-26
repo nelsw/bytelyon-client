@@ -5,6 +5,16 @@ LOG=debug
 SRC=$(shell find . -name "*.go")
 URL=http://localhost:80
 
+all:
+	@make ƒø name=all
+	@go run ./cmd/all/main.go
+	@make ƒç name=all
+
+one:
+	@make ƒø name=one
+	@go run ./cmd/one/main.go
+	@make ƒç name=one
+
 ƒø:
 	@printf "\033[1;94m❯\033[0m %s [\033[1;94m%s\033[0m]\n" "∙∙∙" "${name}"
 ƒç:
@@ -17,7 +27,7 @@ clean:
 
 app:
 	@make ƒø name=app
-	@go run ./cmd/app/main.go -log=$(LOG) -url=$(URL) -key=$(KEY)
+	@go run ./cmd/app/main.go
 	@make ƒç name=app
 
 build:
@@ -26,11 +36,6 @@ build:
 	@rm -f ./bin/app
 	@go build -o ./bin/app ./cmd/app
 	@make ƒç name=build
-
-it: build
-	@make ƒø name=it
-	@./cmd/app -log=$(LOG) -url=$(URL) -key=$(KEY)
-	@make ƒç name=it
 
 fmt:
 	@make ƒø name=fmt

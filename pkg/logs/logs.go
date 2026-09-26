@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nelsw/bytelyon-client/pkg/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	slogzerolog "github.com/samber/slog-zerolog/v2"
@@ -35,7 +34,7 @@ func Init() {
 	}
 	initd = true
 	var err error
-	if f, err = store.Create("logs", time.Now().UTC().Format(time.DateOnly)+".log"); err != nil {
+	if f, err = os.Create(time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
 		panic(err)
 	}
 	log.Logger = MakeZerolog()
