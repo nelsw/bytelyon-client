@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	app.Init(true)
+	app.Init()
 	defer app.Close()
 	app.HandleBot(bot.FindOne())
 }

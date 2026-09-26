@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -17,11 +18,9 @@ import (
 
 var working bool
 
-func Init(banner ...bool) {
+func Init() {
 	logs.Init()
-	if len(banner) > 0 && banner[0] {
-		logs.Welcome()
-	}
+	log.Info().Msg("welcome 🦁")
 }
 
 func Close() {
@@ -31,7 +30,8 @@ func Close() {
 	cache.Close()
 	db.Close()
 	ssh.Close()
-	logs.Goodbye()
+	fmt.Println() // newline in buffer
+	log.Info().Msg("goodbyte 👋")
 }
 
 func HandleBots(arr []bot.Model) {

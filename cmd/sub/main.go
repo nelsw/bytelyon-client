@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	app.Init(true)
+	app.Init()
 	defer app.Close()
 
 	cache.Subscribe(func(payload string) {

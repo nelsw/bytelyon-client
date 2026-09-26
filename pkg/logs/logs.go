@@ -1,15 +1,12 @@
 package logs
 
 import (
-	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	slogzerolog "github.com/samber/slog-zerolog/v2"
 )
 
 const (
@@ -35,7 +32,7 @@ func Init() {
 	}
 	initd = true
 	var err error
-	if f, err = os.Create(time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
+	if f, err = os.Create(".storage/logs/" + time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
 		panic(err)
 	}
 	log.Logger = MakeZerolog()
@@ -86,48 +83,4 @@ func MakeZerolog() zerolog.Logger {
 	}
 
 	return logger
-}
-
-func NewSlog() *slog.Logger {
-
-	var sl slog.Level
-	switch os.Getenv("LOG_LEVEL") {
-	case "debug":
-		sl = slog.LevelDebug
-	case "info":
-		sl = slog.LevelInfo
-	case "warn":
-		sl = slog.LevelWarn
-	case "error":
-		sl = slog.LevelError
-	default:
-		sl = slog.LevelInfo
-	}
-
-	return slog.New(slogzerolog.Option{
-		Level:  sl,
-		Logger: new(MakeZerolog()),
-	}.NewZerologHandler())
-}
-
-func Welcome() {
-	println(strings.Join([]string{
-		"\n\u001B[1;93m",
-		`* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
-		`*                                                                           * `,
-		`*[1;94m` + `    ██████╗ ██╗   ██╗████████╗███████╗██╗  ██╗   ██╗ ██████╗ ███╗   ██╗    ` + "\033[1;93m" + `* `,
-		`*[1;94m` + `    ██╔══██╗╚██╗ ██╔╝╚══██╔══╝██╔════╝██║  ╚██╗ ██╔╝██╔═══██╗████╗  ██║    ` + "\033[1;93m" + `* `,
-		`*[1;94m` + `    ██████╔╝ ╚████╔╝    ██║   █████╗  ██║   ╚████╔╝ ██║   ██║██╔██╗ ██║    ` + "\033[1;93m" + `* `,
-		`*[1;94m` + `    ██╔══██╗  ╚██╔╝     ██║   ██╔══╝  ██║    ╚██╔╝  ██║   ██║██║╚██╗██║    ` + "\033[1;93m" + `* `,
-		`*[1;94m` + `    ██████╔╝   ██║      ██║   ███████╗███████╗██║   ╚██████╔╝██║ ╚████║    ` + "\033[1;93m" + `* `,
-		`*[1;94m` + `    ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚══════╝╚═╝    ╚═════╝ ╚═╝  ╚═══╝    ` + "\033[1;93m" + `* `,
-		`*                                                                           * `,
-		`* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
-		"\n\u001B[0m",
-	}, "\n"))
-}
-
-func Goodbye() {
-	fmt.Println() // newline in buffer
-	log.Info().Msg("goodbyte 👋")
 }

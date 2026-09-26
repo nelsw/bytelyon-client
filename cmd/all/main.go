@@ -13,7 +13,7 @@ import (
 
 func main() {
 
-	app.Init(true)
+	app.Init()
 	defer app.Close()
 
 	quit := make(chan os.Signal, 1)
