@@ -1,4 +1,4 @@
-package postgres
+package db
 
 import (
 	"context"
@@ -47,7 +47,7 @@ func Query(sql string, args ...any) (pgx.Rows, error) {
 	return client.Query(context.Background(), sql, args...)
 }
 
-// Exec uses strict named args so a missing or misspelled arg errors instead of silently writing NULL.
+// Exec uses strictly named args so missing or misspelled arg errors instead of silently writing NULL.
 func Exec(sql string, args pgx.StrictNamedArgs) error {
 	_, err := client.Exec(context.Background(), sql, args)
 	return err
@@ -85,14 +85,9 @@ FROM bots
                                                            ELSE INTERVAL '0'
                                                            END AS at) AS due
 WHERE bots.enabled IS TRUE
-  AND bots.type = ANY (@types)
   AND (due.at IS NULL OR due.at <= NOW())
 ORDER BY due.at NULLS FIRST, bots.id
 `
-
-func SearchBots(types []string) (pgx.Rows, error) {
-	return client.Query(context.Background(), DueBots, pgx.NamedArgs{"types": types})
-}
 
 // Varchar trims s to at most n characters so it fits a varchar(n) column.
 func Varchar(s string, n int) string {

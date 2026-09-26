@@ -1,9 +1,9 @@
 package bot
 
 import (
-	"database/sql/driver"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,6 +27,13 @@ type Model struct {
 	Query string `db:"query"`
 
 	LastRunAt *time.Time `db:"last_run_at"`
+}
+
+func (m *Model) LastRun() time.Time {
+	if m.LastRunAt == nil {
+		return time.Time{}
+	}
+	return *m.LastRunAt
 }
 
 func (m *Model) MarshalZerologObject(evt *zerolog.Event) {
@@ -57,14 +64,6 @@ func (t *Type) Scan(value any) error {
 	return fmt.Errorf("unknown bot type: %v", value)
 }
 
-func (t *Type) Value() (driver.Value, error) {
-	return t.String(), nil
-}
-
-func (t *Type) String() string {
-	return string(*t)
-}
-
 type Blacklist model.Set[string]
 
 func (b *Blacklist) Scan(value any) error {
@@ -82,14 +81,5 @@ func (b *Blacklist) Scan(value any) error {
 
 func (b *Blacklist) OK(words []string) bool {
 	s := model.Set[string](*b)
-	for _, w := range words {
-		if s.Has(w) {
-			return false
-		}
-	}
-	return true
-}
-
-func (m *Model) RanBefore(t time.Time) bool {
-	return m.LastRunAt == nil || m.LastRunAt.Before(t)
+	return !slices.ContainsFunc(words, s.Has)
 }

@@ -5,30 +5,24 @@ LOG=debug
 SRC=$(shell find . -name "*.go")
 URL=http://localhost:80
 
+#
+# App Commands
+#
+# all: periodically polls and works in sequence all workable bots
+# one: query the first workable bot, work it, and exit
+# sub: subscribe to the server for work when it's ready
+#
 all:
-	@make ƒø name=all
-	@go run ./cmd/all/main.go
-	@make ƒç name=all
-
+	@make ƒø name=all && go run ./cmd/all/main.go || true
 one:
-	@make ƒø name=one
-	@go run ./cmd/one/main.go
-	@make ƒç name=one
-
-ƒø:
-	@printf "\033[1;94m❯\033[0m %s [\033[1;94m%s\033[0m]\n" "∙∙∙" "${name}"
-ƒç:
-	@printf "\033[1;92m❯\033[0m %s [\033[1;92m%s\033[0m]\n" "∙∙∙" "${name}"
+	@make ƒø name=one && go run ./cmd/one/main.go || true
+sub:
+	@make ƒø name=sub && go run ./cmd/sub/main.go || true
 
 clean:
 	@make ƒø name=clean
 	@rm -f .storage ./bin/app
 	@make ƒç name=clean
-
-app:
-	@make ƒø name=app
-	@go run ./cmd/app/main.go
-	@make ƒç name=app
 
 build:
 	@make ƒø name=build
@@ -67,3 +61,8 @@ deps: install
 install:
 	@go get -u github.com/kyoh86/richgo
 	@go install github.com/joho/godotenv/cmd/godotenv@latest
+
+ƒø:
+	@printf "\033[1;94m❯\033[0m %s [\033[1;94m%s\033[0m]\n" "∙∙∙" "${name}"
+ƒç:
+	@printf "\033[1;92m❯\033[0m %s [\033[1;92m%s\033[0m]\n" "∙∙∙" "${name}"

@@ -1,4 +1,4 @@
-package redis
+package cache
 
 import (
 	"context"
@@ -12,7 +12,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var client *redis.Client
+const channel = "bots"
+
+var (
+	ctx    = context.Background()
+	client *redis.Client
+)
 
 func init() {
 	db, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
@@ -24,13 +29,13 @@ func init() {
 		Dialer:       ssh.DialFunc(),
 	})
 
-	if err := client.Ping(context.Background()).Err(); err != nil {
+	if err := client.Ping(ctx).Err(); err != nil {
 		log.Err(err).Str("addr", client.Options().Addr).Msg("redis ping failed")
 	}
 }
 
-func Subscribe(ctx context.Context, channels []string, fn func(payload string)) {
-	sub := client.Subscribe(ctx, channels...)
+func Subscribe(fn func(payload string)) {
+	sub := client.Subscribe(ctx, channel)
 	defer func(sub *redis.PubSub) {
 		if err := sub.Close(); err != nil {
 			log.Err(err).Send()
@@ -48,13 +53,13 @@ func Subscribe(ctx context.Context, channels []string, fn func(payload string)) 
 }
 
 func Put(key string, val any) {
-	if err := client.Set(context.Background(), key, val, 6*time.Hour).Err(); err != nil {
+	if err := client.Set(ctx, key, val, 6*time.Hour).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
 func Get(key string) (string, error) {
-	return client.Get(context.Background(), key).Result()
+	return client.Get(ctx, key).Result()
 }
 
 func Close() {

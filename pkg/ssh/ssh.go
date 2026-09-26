@@ -14,6 +14,13 @@ import (
 
 var client *ssh.Client
 
+// conn wraps an ssh channel, which returns "deadline not supported" errors, so clients that set deadlines still work.
+type conn struct{ net.Conn }
+
+func (conn) SetDeadline(time.Time) error      { return nil }
+func (conn) SetReadDeadline(time.Time) error  { return nil }
+func (conn) SetWriteDeadline(time.Time) error { return nil }
+
 func init() {
 
 	pemBytes, err := os.ReadFile(os.Getenv("HOME") + "/.ssh/id_rsa")
@@ -38,14 +45,7 @@ func init() {
 
 }
 
-// conn wraps an ssh channel, which returns "deadline not supported" errors, so clients that set deadlines still work.
-type conn struct{ net.Conn }
-
-func (conn) SetDeadline(time.Time) error      { return nil }
-func (conn) SetReadDeadline(time.Time) error  { return nil }
-func (conn) SetWriteDeadline(time.Time) error { return nil }
-
-func DialFunc() func(ctx context.Context, network, addr string) (net.Conn, error) {
+func DialFunc() func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		c, err := client.Dial(network, addr)
 		if err != nil {

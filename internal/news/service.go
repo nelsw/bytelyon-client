@@ -1,29 +1,33 @@
 package news
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/http"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
-	"github.com/nelsw/bytelyon-client/pkg/s3"
 	"github.com/rs/zerolog/log"
 )
 
-func Fetch(m *bot.Model) {
+func Fetch(
+	botID int,
+	query string,
+	headless bool,
+	lastRun time.Time,
+	blacklist bot.Blacklist,
+) {
 
 	var arr []*Article
 
 	ƒ := func(s Source) {
 
-		rss, err := http.New(s.URL(m.Query)).Get().XML[RSS]()
+		rss, err := http.New(s.URL(query)).Get().XML[RSS]()
 		if err != nil {
 			log.Err(err).Send()
 			return
@@ -33,7 +37,7 @@ func Fetch(m *bot.Model) {
 		for _, a := range rss.Channel.Articles {
 			wg.Go(func() {
 
-				if !m.RanBefore(a.PublishedAt()) || !m.Blacklist.OK(a.Words()) {
+				if lastRun.After(a.PublishedAt()) || !blacklist.OK(a.Words()) {
 					return
 				}
 
@@ -72,40 +76,18 @@ func Fetch(m *bot.Model) {
 		return
 	}
 
-	if err := play.News(m.Headless, s.Keys()); err != nil {
+	if err := play.News(headless, s.Keys()); err != nil {
 		log.Err(err).Send()
 	}
 
-	path := filepath.Join(".storage", "sitemap", strconv.Itoa(m.ID))
+	path := filepath.Join(".storage", "sitemap", strconv.Itoa(botID))
 
 	for _, a := range arr {
-		p := filepath.Join(path, uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String())
+		n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String()
+		p := filepath.Join(path, n)
+		_, _, d := play.HandleFiles(p)
 
-		from := p + ".html"
-		to := strings.ReplaceAll(from, ".storage/", "")
-		_ = s3.Move(from, to)
-		//_ = os.Remove(from)
-
-		from = p + ".png"
-		to = strings.ReplaceAll(from, ".storage/", "")
-		_ = s3.Move(from, to)
-		//_ = os.Remove(from)
-
-		from = p + ".json"
-		bytes, err := os.ReadFile(from)
-		if err != nil {
-			log.Warn().Err(err).Msg("failed to read page")
-			return
-		}
-		//_ = os.Remove(from)
-
-		var d model.Data[string, any]
-		if err = json.Unmarshal(bytes, &d); err != nil {
-			log.Warn().Err(err).Msg("failed to unmarshal page")
-			return
-		}
-
-		d.Put("bot_id", m.ID)
+		d.Put("bot_id", botID)
 		d.Put("source", a.Source)
 		d.Put("title", a.Title)
 		d.Put("publisher", a.Publisher)
@@ -113,10 +95,6 @@ func Fetch(m *bot.Model) {
 			d.Put("description", a.Desc)
 		}
 
-		Save(m.ID, a)
+		UpsertArticle(botID, a)
 	}
-}
-
-func save() {
-
 }

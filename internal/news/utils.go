@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/http"
-	"github.com/nelsw/bytelyon-client/pkg/redis"
 	"github.com/nelsw/bytelyon-client/pkg/url"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/html"
@@ -27,7 +27,7 @@ func decodeBingLink(link string) string {
 
 func decodeGoogleLink(link string) (URL string) {
 
-	if str, err := redis.Get(link); err == nil {
+	if str, err := cache.Get(link); err == nil {
 		return str
 	}
 
@@ -103,7 +103,7 @@ func decodeGoogleLink(link string) (URL string) {
 		l.Warn().Msg("failed to decode gstatic node")
 	} else {
 		log.Trace().Str("url", URL).Msg("decoded gstatic url")
-		redis.Put(link, URL)
+		cache.Put(link, URL)
 	}
 	return
 }

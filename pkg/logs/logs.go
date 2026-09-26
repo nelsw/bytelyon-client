@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -109,7 +110,7 @@ func NewSlog() *slog.Logger {
 	}.NewZerologHandler())
 }
 
-func Banner() {
+func Welcome() {
 	println(strings.Join([]string{
 		"\n\u001B[1;93m",
 		`* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
@@ -124,4 +125,9 @@ func Banner() {
 		`* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * `,
 		"\n\u001B[0m",
 	}, "\n"))
+}
+
+func Goodbye() {
+	fmt.Println() // newline in buffer
+	log.Info().Msg("goodbyte 👋")
 }

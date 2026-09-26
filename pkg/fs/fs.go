@@ -1,4 +1,4 @@
-package s3
+package fs
 
 import (
 	"bytes"
@@ -71,8 +71,11 @@ func Move(from, to string) (err error) {
 			Send()
 	}()
 
-	if data, err = os.ReadFile(from); err == nil {
-		err = Put(to, data)
+	if data, err = os.ReadFile(from); err != nil {
+		return
+	} else if err = Put(to, data); err != nil {
+		return
 	}
+	err = os.Remove(from)
 	return
 }

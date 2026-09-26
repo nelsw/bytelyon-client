@@ -1,16 +1,13 @@
 package search
 
 import (
-	"os"
-
-	"github.com/goforj/godump"
 	"github.com/jackc/pgx/v5"
+	"github.com/nelsw/bytelyon-client/pkg/db"
 	"github.com/nelsw/bytelyon-client/pkg/model"
-	"github.com/nelsw/bytelyon-client/pkg/postgres"
 	"github.com/rs/zerolog/log"
 )
 
-func Save(id int, data model.Data[string, any], imgKey, srcKey string) {
+func UpdateSearch(id int, imgKey, srcKey string, data model.Data[string, any]) {
 	sql := `
 UPDATE serps
     SET data = @data,
@@ -25,10 +22,7 @@ WHERE id = @id
 		"screenshot_key": imgKey,
 		"content_key":    srcKey,
 	}
-	if err := postgres.Exec(sql, d); err != nil {
+	if err := db.Exec(sql, d); err != nil {
 		log.Warn().Err(err).Msg("failed to save serp")
-		if os.Getenv("APP_MODE") == "test" {
-			godump.DumpJSON(d)
-		}
 	}
 }

@@ -3,7 +3,7 @@
 /bin/
 state.json
 *.log
-*.env*
+*.env
 *.storage/
 /scripts/.idea/
 /scripts/pyproject.toml
