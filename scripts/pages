@@ -1,0 +1,166 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "playwright",
+#   "cloakbrowser",
+#   "cloakbrowser[geoip]",
+# ]
+# ///
+import argparse
+import json
+from pathlib import Path
+from urllib.parse import urldefrag
+from uuid import uuid5, NAMESPACE_URL
+
+from cloakbrowser import launch, ProxySettings
+from playwright.sync_api import Browser, Page, Error
+
+KEYWORD_ATTRS = ["property='article:tag'", "name='news_keywords'", "name='keywords'"]
+DESCRIPTION_ATTRS = ["name='description'", "property='og:description'", "name='twitter:description'", "name='abstract'"]
+IMG_ALT_ATTRS = ["property='og:image:alt'", "name='twitter:image:alt'"]
+IMG_SRC_ATTRS = ["name='image'", "property='og:image'", "property='og:image:secure_url'", "name='twitter:image'",
+                 "name='twitter:image:src'"]
+
+
+def collect_links(page: Page) -> list[str]:
+    hrefs = page.locator('a[href]').evaluate_all("""
+                                                 els => els.map(el => el.href.trim()).filter(s => s.startsWith('http'))
+                                                 """)
+    return sorted({urldefrag(href).url for href in hrefs})
+
+
+def collect_all_meta(page: Page) -> dict[str, str | list[str]]:
+    pairs = page.locator('meta[content]').evaluate_all("""
+                                                       els => els
+                                                           .map(el => [
+                                                               (el.getAttribute('name') || el.getAttribute('property') || el.getAttribute('http-equiv') || el.getAttribute('itemprop') || '').trim(),
+                                                               (el.getAttribute('content') || '').trim(),
+                                                           ])
+                                                           .filter(([key, val]) => key !== '' && val !== '')
+                                                       """)
+    meta: dict[str, list[str]] = {}
+    for key, val in pairs:
+        vals = meta.setdefault(key, [])
+        if val not in vals:
+            vals.append(val)
+    return {key: vals[0] if len(vals) == 1 else vals for key, vals in meta.items()}
+
+
+def collect_one_meta(page: Page, attrs: list[str]) -> str:
+    for attr in attrs:
+        try:
+            for elem in page.locator(f"meta[{attr}]").all():
+                text = elem.get_attribute('content', timeout=2_500)
+                if text is not None and text != "":
+                    return text
+        except TimeoutError:
+            pass
+    return ''
+
+
+def collect_body(page: Page) -> str:
+    text = []
+    for selector in ["article", "main", "body", "html"]:
+        if page.locator(selector).count() == 0:
+            continue
+        for p in page.locator(selector).locator("p").all():
+            txt = p.text_content()
+            if txt is None:
+                continue
+            text.append(txt.strip())
+    out = " ".join(text)
+    out = out.replace(
+        "This is a modal window. Beginning of dialog window. Escape will cancel and close the window. End of dialog window.",
+        "",
+    )
+    return out
+
+
+def handle(
+        path: str,
+        url: str,
+        page: Page,
+) -> None:
+
+    page.goto(url=url)
+    page.wait_for_load_state('domcontentloaded', timeout=5_000)
+
+    name = uuid5(NAMESPACE_URL, url)
+
+    # save page screenshot
+    img_key = f"{path}/{name}.png"
+    page.screenshot(full_page=True, path=img_key)
+
+    # save page content
+    src = page.content()
+    src_key = f"{path}/{name}.html"
+    with open(src_key, "w", encoding="utf-8") as file:
+        file.write(src)
+
+    # save page data
+    with open(f"{path}/{name}.json", "w", encoding="utf-8") as file:
+        json.dump({
+            'url': url,
+            'title': page.title(),
+            'meta': collect_all_meta(page),
+            'body': collect_body(page),
+            'links': collect_links(page),
+            'img_src': collect_one_meta(page, IMG_SRC_ATTRS),
+            'img_alt': collect_one_meta(page, IMG_ALT_ATTRS),
+            'description': collect_one_meta(page, DESCRIPTION_ATTRS),
+            'keywords': (collect_one_meta(page, KEYWORD_ATTRS)).split(','),
+            'screenshot_key': img_key,
+            'content_key': src_key,
+        }, file, indent=4)
+
+
+def main(
+        path: str,
+        urls: list[str],
+        headless: bool,
+        proxy: ProxySettings | None,
+) -> None:
+    Path(path).mkdir(parents=True, exist_ok=True)
+    if proxy is not None:
+        browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
+    else:
+        browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
+
+    page = browser.new_page()
+    for url in urls:
+        try:
+            handle(path, url, page)
+        except Error:
+            pass
+    browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the news 🤖")
+    _ = parser.add_argument('-t', '--type', type=str, default='')
+    _ = parser.add_argument('-i', '--id', type=int, default='')
+    _ = parser.add_argument('-u', '--urls', help='Page URLs', nargs='+')
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = None
+    if args.proxy_host != '':
+        proxy_val = ProxySettings(
+            username=args.proxy_user,
+            password=args.proxy_pass,
+            server=f"{args.proxy_scheme}://{args.proxy_host}:{args.proxy_port}",
+        )
+
+    main(
+        path=f".storage/{args.type}/{args.id}",
+        urls=args.urls,
+        headless=args.mode,
+        proxy=proxy_val,
+    )

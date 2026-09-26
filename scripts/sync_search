@@ -1,0 +1,335 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "playwright",
+#   "cloakbrowser",
+#   "cloakbrowser[geoip]",
+# ]
+# ///
+import argparse
+import hashlib
+import json
+import random
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+
+from cloakbrowser import launch, ProxySettings
+from playwright.sync_api import Browser, Page
+
+_URL_CACHE: dict[str, tuple[float, str]] = {}
+_URL_CACHE_TTL_S = 1800  # 30 minutes
+
+def scroll(
+        page: Page,
+        min_flick: int = 400,  # px per scroll gesture
+        max_flick: int = 1200,
+        read_pause: tuple[float, float] = (0.1, 0.3),  # seconds between gestures
+        backtrack_chance: float = 0.12,  # chance of a small scroll in the opposite direction
+        long_pause_chance: float = 0.08,  # chance of stopping to "read" for a while
+        up_speed_factor: float = 1.6,  # how much faster the return trip is
+) -> None:
+    def skewed(a: float, b: float) -> float:
+        # Mostly short values with an occasional long one
+        return a + (b - a) * random.random() ** 2
+
+    def scroll_state() -> dict:
+        return page.evaluate(
+            """() => {
+                const el = document.scrollingElement || document.documentElement;
+                return {y: el.scrollTop, max: el.scrollHeight - innerHeight};
+            }"""
+        )
+
+    vp = page.viewport_size or page.evaluate(
+        "() => ({ width: innerWidth, height: innerHeight })"
+    )
+
+    def drift_mouse() -> None:
+        # Keep the cursor somewhere in the middle of the page so wheel events hit the content
+        x = random.uniform(vp["width"] * 0.3, vp["width"] * 0.7)
+        y = random.uniform(vp["height"] * 0.3, vp["height"] * 0.7)
+        page.mouse.move(x, y, steps=random.randint(5, 15))
+
+    def flick(distance: float, speed: float) -> None:
+        # One gesture: many small wheel events that start big and shrink, like a trackpad flick
+        ticks = random.randint(8, 20)
+        weights = [(1 - i / ticks) ** 2 + 0.05 for i in range(ticks)]
+        total = sum(weights)
+        for w in weights:
+            page.mouse.wheel(0, distance * w / total)
+            time.sleep(random.uniform(0.012, 0.035) / speed)
+
+    def scroll_pass(direction: int) -> None:
+        checks_at_end = 0
+        while True:
+            state = scroll_state()
+            at_end = state["y"] >= state["max"] - 2 if direction > 0 else state["y"] <= 2
+            if at_end:
+                # At the bottom, wait briefly in case lazy-loaded content makes the page longer
+                if direction > 0 and checks_at_end < 2:
+                    checks_at_end += 1
+                    time.sleep(random.uniform(0.6, 1.2))
+                    continue
+                break
+            checks_at_end = 0
+
+            speed = 1 if direction > 0 else up_speed_factor
+            dist = random.uniform(min_flick, max_flick) * speed * direction
+            if random.random() < backtrack_chance:
+                dist = -direction * random.uniform(60, 250)
+
+            flick(dist, speed)
+
+            pause = skewed(*read_pause) / speed
+            if random.random() < long_pause_chance:
+                pause += random.uniform(1.5, 4.0)
+            if random.random() < 0.25:
+                drift_mouse()
+            time.sleep(pause)
+
+    drift_mouse()
+    scroll_pass(1)  # down
+    time.sleep(random.uniform(0.8, 2.5))  # pause at the bottom
+    scroll_pass(-1)  # back up
+
+
+def _to_domain(url: str) -> str:
+    host = urlparse(url).hostname or ""
+    return host.removeprefix("www.")
+
+
+def _final_url(page: Page, link: str, timeout_ms: int) -> str:
+    """Resolve a (possibly relative/redirect) Google result link to its final
+    destination URL by actually requesting it, through the same browser
+    context (and therefore the same proxy/session) as the search itself.
+    Falls back to the normalized-but-unresolved link on any failure.
+    """
+    if not link:
+        return link
+    if not link.startswith("https://www.google.com"):
+        if not link.startswith("/"):
+            link = f"/{link}"
+        link = f"https://www.google.com{link}"
+
+    cache_key = hashlib.sha1(link.encode()).hexdigest()
+    now = time.monotonic()
+    cached = _URL_CACHE.get(cache_key)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    try:
+        final_url = page.request.get(link, timeout=timeout_ms).url
+    except Exception:
+        return link
+
+    expires_at = now + _URL_CACHE_TTL_S
+    _URL_CACHE[cache_key] = (expires_at, final_url)
+    _URL_CACHE[hashlib.sha1(final_url.encode()).hexdigest()] = (expires_at, final_url)
+    return final_url
+
+
+def handle(
+        path: str,
+        query: str,
+        page: Page,
+) -> None:
+
+    page.goto(url="https://www.google.com")
+    page.locator('textarea[name="q"]').first.click()
+    page.keyboard.type(query)
+    page.keyboard.press('Enter')
+    page.wait_for_load_state('domcontentloaded', timeout=5_000)
+    page.wait_for_selector('#appbar')
+
+    # save page screenshot
+    page.screenshot(full_page=True, path=f"{path}/{query}.png")
+
+    # save page content
+    with open(f"{path}/{query}.html", "w", encoding="utf-8") as file:
+        file.write(page.content())
+
+
+    raw = page.evaluate(r"""
+() => {
+    const textOf = (el) => (el && el.textContent ? el.textContent.trim() : "");
+
+    const sponsoredResults = Array.from(document.querySelectorAll("[data-pcu]")).map((e, i) => {
+        const spans = e.querySelectorAll("span");
+        const rawBrand = spans[1] ? textOf(spans[1]) : "";
+        return {
+            index: i,
+            title: spans[0] ? textOf(spans[0]) : "",
+            brand: rawBrand.split("https://")[0].trim(),
+            href: e.getAttribute("href") || "",
+        };
+    });
+
+    const organicProducts = Array.from(document.querySelectorAll("product-viewer-entrypoint")).map((e, i) => {
+        const div = e.querySelector("div");
+        const img = e.querySelector("img");
+        let title = div ? (div.getAttribute("aria-label") || "") : "";
+        if (!title && img) title = img.getAttribute("alt") || "";
+        return {
+            index: i,
+            title,
+            image: img ? (img.getAttribute("src") || "") : "",
+        };
+    });
+
+    const sponsoredProducts = Array.from(document.querySelectorAll("[data-dtld]")).map((e, i) => {
+        const div = e.querySelector("div.pla-unit-container");
+        const a = div ? div.querySelector("a.pla-unit-img-container-link") : null;
+        const titleEl = div ? div.querySelector("div[data-call_grow_wiz_event='true']") : null;
+        const priceEl = div ? div.querySelector("div[aria-label]") : null;
+        const brandEl = div ? div.querySelector("span[role='text']") : null;
+        const img = a ? a.querySelector("img") : null;
+        return {
+            index: i,
+            domain: e.getAttribute("data-dtld") || "",
+            href: a ? (a.getAttribute("href") || "") : "",
+            image: img ? (img.getAttribute("src") || "") : "",
+            title: textOf(titleEl),
+            price: priceEl ? (priceEl.getAttribute("aria-label") || "") : "",
+            brand: textOf(brandEl),
+        };
+    });
+
+    const organicResults = Array.from(document.querySelectorAll("h3[id]")).map((e, i) => {
+        const parent = e.parentElement;
+        return {
+            index: i,
+            title: textOf(e),
+            href: parent ? (parent.getAttribute("href") || "") : "",
+        };
+    });
+
+    const similarQueries = [];
+    document.querySelectorAll("div[data-notify-expansion]").forEach((e) => {
+        const q = e.getAttribute("data-q") || "";
+        if (q.length > 4) similarQueries.push(q);
+    });
+    const botstuff = document.querySelector("div#botstuff");
+    if (botstuff) {
+        botstuff.querySelectorAll("a").forEach((a) => {
+            const t = textOf(a);
+            if (t.length > 4) similarQueries.push(t);
+        });
+    }
+
+    return { sponsoredResults, organicProducts, sponsoredProducts, organicResults, similarQueries };
+}
+""")
+    sponsored_results: list[dict] = []
+    for item in raw.get("sponsoredResults", []):
+        url = _final_url(page, item.get("href", ""), 5_000)
+        sponsored_results.append(
+            {
+                "kind": "sponsored_result",
+                "index": item["index"],
+                "title": item.get("title", ""),
+                "brand": item.get("brand", ""),
+                "url": url,
+                "domain": _to_domain(url),
+            }
+        )
+
+    organic_products = [
+        {
+            "kind": "organic_product",
+            "index": item["index"],
+            "title": item.get("title", ""),
+            "image": item.get("image", ""),
+        }
+        for item in raw.get("organicProducts", [])
+    ]
+
+    sponsored_products: list[dict] = []
+    for item in raw.get("sponsoredProducts", []):
+        url = _final_url(page, item.get("href", ""), 5_000)
+        sponsored_products.append(
+            {
+                "kind": "sponsored_product",
+                "index": item["index"],
+                "domain": item.get("domain", ""),
+                "url": url,
+                "image": item.get("image", ""),
+                "title": item.get("title", ""),
+                "price": item.get("price", ""),
+                "brand": item.get("brand", ""),
+            }
+        )
+
+    organic_results: list[dict] = []
+    for item in raw.get("organicResults", []):
+        url = _final_url(page, item.get("href", ""), 5_000)
+        organic_results.append(
+            {
+                "kind": "organic_result",
+                "index": item["index"],
+                "title": item.get("title", ""),
+                "url": url,
+                "domain": _to_domain(url),
+            }
+        )
+
+    similar_queries = [
+        {"kind": "similar_query", "index": i, "value": value}
+        for i, value in enumerate(raw.get("similarQueries", []))
+    ]
+
+    with open(f"{path}/{query}.json", "w", encoding="utf-8") as file:
+        json.dump({
+            "sponsored_results": sponsored_results,
+            "sponsored_products": sponsored_products,
+            "organic_results": organic_results,
+            "organic_products": organic_products,
+            "similar_queries": similar_queries,
+        }, file, indent=4)
+
+
+def main(
+        path: str,
+        query: str,
+        headless: bool,
+        proxy: ProxySettings | None,
+) -> None:
+    Path(path).mkdir(parents=True, exist_ok=True)
+    if proxy is not None:
+        browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
+    else:
+        browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
+    handle(path, query, browser.new_page())
+    browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the page 🤖")
+    _ = parser.add_argument('-i', '--id', type=int, default='')
+    _ = parser.add_argument('-q', '--query', help='Search Query', type=str)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = None
+    if args.proxy_host != '':
+        proxy_val = ProxySettings(
+            username=args.proxy_user,
+            password=args.proxy_pass,
+            server=f"{args.proxy_scheme}://{args.proxy_host}:{args.proxy_port}",
+            bypass='.google.com'
+        )
+
+    main(
+        path=f".storage/search/{args.id}/{args.query}",
+        query=args.query,
+        headless=args.mode,
+        proxy=proxy_val,
+    )
+

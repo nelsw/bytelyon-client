@@ -3,4 +3,9 @@
 /bin/
 state.json
 *.log
-*.env*
+*.env
+*.storage/
+/scripts/.idea/
+/scripts/pyproject.toml
+/scripts/.venv/
+/scripts/uv.lock
