@@ -7,6 +7,8 @@
 ![Python](https://img.shields.io/badge/3.14-476E99?logo=python&logoColor=white&labelColor=474748)
 ![Postgres](https://img.shields.io/badge/18-316192?logo=postgresql&logoColor=white&labelColor=474748)
 ![Redis](https://img.shields.io/badge/9-DD0031?logo=redis&logoColor=white&labelColor=474748)
+
+[![Go CI/CD Pipeline](https://github.com/nelsw/bytelyon-client/actions/workflows/ci.yml/badge.svg)](https://github.com/nelsw/bytelyon-client/actions/workflows/ci.yml)
 </div>
 
 ## Model
