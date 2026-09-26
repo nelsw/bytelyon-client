@@ -23,8 +23,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60
-
+          version: v2.13.1
   # 2. Test and Build Job: Runs unit tests and builds the executable
   test-and-build:
     name: Test and Build
