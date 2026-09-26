@@ -23,5 +23,5 @@ func Fetch(
 
 	srcKey, imgKey, data := play.HandleFiles(path)
 
-	UpdateSearch(searchID, srcKey, imgKey, data)
+	UpdateSearch(searchID, imgKey, srcKey, data)
 }

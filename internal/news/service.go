@@ -24,6 +24,7 @@ func Fetch(
 ) {
 
 	var arr []*Article
+	var mu sync.Mutex
 
 	ƒ := func(s Source) {
 
@@ -55,7 +56,9 @@ func Fetch(
 					a.Source = "Bing News"
 				}
 
+				mu.Lock()
 				arr = append(arr, a)
+				mu.Unlock()
 			})
 		}
 		wg.Wait()
@@ -80,7 +83,7 @@ func Fetch(
 		log.Err(err).Send()
 	}
 
-	path := filepath.Join(".storage", "sitemap", strconv.Itoa(botID))
+	path := filepath.Join(".storage", "news", strconv.Itoa(botID))
 
 	for _, a := range arr {
 		n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String()

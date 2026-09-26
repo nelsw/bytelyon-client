@@ -3,17 +3,37 @@ package db
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/nelsw/bytelyon-client/pkg/ssh"
 )
 
-var client *pgxpool.Pool
+// Pool is the subset of *pgxpool.Pool used by this package.
+type Pool interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Close()
+}
 
-func init() {
+var (
+	client Pool
+	mu     sync.Mutex
+)
+
+// connect lazily opens the pool on first use; like before, a misconfigured database is fatal.
+func connect() Pool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client != nil {
+		return client
+	}
 
 	ctx := context.Background()
 
@@ -23,33 +43,51 @@ func init() {
 	}
 	cfg.ConnConfig.DialFunc = ssh.DialFunc()
 
-	if client, err = pgxpool.NewWithConfig(ctx, cfg); err != nil {
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
 		panic(err)
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	if err = client.Ping(pingCtx); err != nil {
+	if err = pool.Ping(pingCtx); err != nil {
+		pool.Close()
 		panic(err)
 	}
+
+	client = pool
+	return client
+}
+
+// Use replaces the pool, e.g. with a mock in tests.
+func Use(p Pool) {
+	mu.Lock()
+	defer mu.Unlock()
+	client = p
 }
 
 func Close() {
-	client.Close()
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client != nil {
+		client.Close()
+		client = nil
+	}
 }
 
 func QueryRow(ctx context.Context, sql string, args []any, dest ...any) error {
-	return client.QueryRow(ctx, sql, args...).Scan(dest...)
+	return connect().QueryRow(ctx, sql, args...).Scan(dest...)
 }
 
 func Query(sql string, args ...any) (pgx.Rows, error) {
-	return client.Query(context.Background(), sql, args...)
+	return connect().Query(context.Background(), sql, args...)
 }
 
 // Exec uses strictly named args so missing or misspelled arg errors instead of silently writing NULL.
 func Exec(sql string, args pgx.StrictNamedArgs) error {
-	_, err := client.Exec(context.Background(), sql, args)
+	_, err := connect().Exec(context.Background(), sql, args)
 	return err
 }
 

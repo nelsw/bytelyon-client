@@ -36,7 +36,7 @@ one: ## query the first workable bot, work it, and exit
 	@$(MAKE) it APP=one
 sub: ## subscribe to the server for work when it's ready
 	@$(MAKE) it APP=sub || true
-it: ## helper target for aforementioned targets, requires argument 'APP=<all|one|sub>'
+it: banner ## helper target for aforementioned targets, requires argument 'APP=<all|one|sub>'
 	@$(MAKE) ƒø name=run-$(APP)
 	@go run ./cmd/$(APP)/main.go
 	@$(MAKE) ƒç name=run-$(APP)
@@ -74,17 +74,18 @@ build: deps ## generate code (jic) and build the executable
 	@$(MAKE) ƒç name=build-$(APP)
 
 ##@ Test
-test: deps ## verbose test; requires an .env file
+test: banner deps ## verbose test; requires an .env file
 	@$(MAKE) ƒø name=test
 	@godotenv -f .env go test -v ./...
 	@$(MAKE) ƒç name=test
-rich: deps ## verbose richgo test; requires an .env file
+rich: banner deps ## verbose richgo test; requires an .env file
 	@$(MAKE) ƒø name=rich
-	@godotenv -f .env richgo test -v ./...
+	@godotenv -f .env richgo test -coverprofile=coverage.out -v ./...
+	@gocovsh
 	@$(MAKE) ƒç name=rich
 
-ƒø: banner
-	@printf "\n\033[1;94m❯\033[0m %s [\033[1;94m%s\033[0m]\n" "∙∙∙" "${name}"
+ƒø:
+	@printf "\n\033[1;95m❯\033[0m %s [\033[1;95m%s\033[0m]\n" "∙∙∙" "${name}"
 ƒç:
 	@printf "\033[1;92m❯\033[0m %s [\033[1;92m%s\033[0m]\n" "∙∙∙" "${name}"
 banner:

@@ -17,7 +17,7 @@ func main() {
 	app.Init()
 	defer app.Close()
 
-	cache.Subscribe(func(payload string) {
+	go cache.Subscribe(func(payload string) {
 		var b bot.Model
 		if err := json.Unmarshal([]byte(payload), &b); err != nil {
 			log.Err(err).Msg("failed to unmarshal bot payload")

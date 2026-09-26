@@ -22,17 +22,16 @@ const (
 var f *os.File
 var initd bool
 
-func init() {
-	Init()
-}
-
 func Init() {
 	if initd {
 		return
 	}
 	initd = true
+	const dir = ".storage/logs/"
 	var err error
-	if f, err = os.Create(".storage/logs/" + time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
+	if err = os.MkdirAll(dir, 0o755); err != nil {
+		panic(err)
+	} else if f, err = os.Create(dir + time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
 		panic(err)
 	}
 	log.Logger = MakeZerolog()
@@ -41,7 +40,7 @@ func Init() {
 func MakeZerolog() zerolog.Logger {
 
 	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil {
+	if err != nil || lvl == zerolog.NoLevel { // an empty LOG_LEVEL parses to NoLevel, which hides everything
 		lvl = zerolog.TraceLevel
 	}
 

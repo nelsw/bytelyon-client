@@ -52,6 +52,8 @@ func Search(id int, query string, headless bool) error {
 
 func HandleFiles(path string) (srcKey string, imgKey string, data model.Data[string, any]) {
 
+	data = model.Data[string, any]{}
+
 	from := path + ".html"
 	srcKey = strings.ReplaceAll(from, ".storage/", "")
 	_ = fs.Move(from, srcKey)

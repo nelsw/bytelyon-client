@@ -9,3 +9,4 @@ state.json
 /scripts/pyproject.toml
 /scripts/.venv/
 /scripts/uv.lock
+/coverage.out
