@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -16,7 +17,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var working bool
+// working counts in-flight bot handlers so Close can wait for them to finish.
+var working atomic.Int32
 
 func Init() {
 	logs.Init()
@@ -24,7 +26,7 @@ func Init() {
 }
 
 func Close() {
-	for working {
+	for working.Load() > 0 {
 		time.Sleep(time.Second)
 	}
 	cache.Close()
@@ -35,8 +37,8 @@ func Close() {
 }
 
 func HandleBots(arr []bot.Model) {
-	working = true
-	defer func() { working = false }()
+	working.Add(1)
+	defer working.Add(-1)
 	for _, b := range arr {
 		HandleBot(b)
 	}
@@ -44,8 +46,8 @@ func HandleBots(arr []bot.Model) {
 
 func HandleBot(b bot.Model) {
 
-	working = true
-	defer func() { working = false }()
+	working.Add(1)
+	defer working.Add(-1)
 
 	if b.ID == 0 {
 		log.Info().Msg("bot not found")

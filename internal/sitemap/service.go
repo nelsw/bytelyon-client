@@ -13,10 +13,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var depth int
+var maxDepth int
 
 func init() {
-	depth, _ = strconv.Atoi(os.Getenv("SITEMAP_DEPTH"))
+	maxDepth, _ = strconv.Atoi(os.Getenv("SITEMAP_DEPTH"))
 }
 
 func Fetch(
@@ -36,6 +36,7 @@ func Fetch(
 		domain,
 		headless,
 		sitemapID,
+		maxDepth,
 		urls,
 		"https://"+domain,
 	); err != nil {
@@ -49,6 +50,7 @@ func fetch(
 	domain string,
 	headless bool,
 	sitemapID int,
+	depth int,
 	done *model.SyncSet[string],
 	urls ...string,
 ) error {
@@ -85,16 +87,17 @@ func fetch(
 
 		done.Add(u)
 
-		for _, link := range d.Get("links").([]any) {
-			str := link.(string)
-			if url.Domain(str) == domain && !done.Has(str) && !todo.Has(str) {
+		links, _ := d.Get("links").([]any)
+		for _, link := range links {
+			str, _ := link.(string)
+			if str != "" && url.Domain(str) == domain && !done.Has(str) && !todo.Has(str) {
 				todo.Add(str)
 			}
 		}
 	}
 
 	if depth > 0 {
-		return fetch(domain, headless, depth-1, done, todo.Keys()...)
+		return fetch(domain, headless, sitemapID, depth-1, done, todo.Keys()...)
 	}
 
 	done.AddAll(todo.Keys())

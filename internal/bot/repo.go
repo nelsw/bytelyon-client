@@ -55,7 +55,7 @@ func FindOne() (m Model) {
 		return
 	} else if err != nil {
 		log.Err(err).Msg("failed to collect bot")
-		return
+		return Model{} // discard the partially scanned row
 	}
 	return
 }

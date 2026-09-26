@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -13,16 +14,23 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var client *s3.Client
-var bucket string
+var (
+	client *s3.Client
+	once   sync.Once
+	cfgErr error
+)
 
-func init() {
-	cfg, err := config.LoadDefaultConfig(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	bucket = os.Getenv("S3_BUCKET")
-	client = s3.NewFromConfig(cfg)
+// connect lazily creates the S3 client on first use.
+func connect() (*s3.Client, error) {
+	once.Do(func() {
+		cfg, err := config.LoadDefaultConfig(context.Background())
+		if err != nil {
+			cfgErr = err
+			return
+		}
+		client = s3.NewFromConfig(cfg)
+	})
+	return client, cfgErr
 }
 
 // Put creates a new object or replaces an old object with a new object.
@@ -45,8 +53,13 @@ func Put(key string, data []byte) (err error) {
 		return errors.New("cannot put object with empty data")
 	}
 
-	_, err = client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket:      &bucket,
+	var c *s3.Client
+	if c, err = connect(); err != nil {
+		return
+	}
+
+	_, err = c.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket:      new(os.Getenv("S3_BUCKET")),
 		Key:         &key,
 		Body:        bytes.NewReader(data),
 		ContentType: new(http.DetectContentType(data)),
