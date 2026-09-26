@@ -67,8 +67,6 @@ func (r *Request) do(method string, a ...any) Response {
 	var buf io.Reader
 	if len(a) > 0 {
 		switch body := a[0].(type) {
-		case io.Reader:
-			buf = body.(io.Reader)
 		case string:
 			buf = io.NopCloser(strings.NewReader(body))
 		case []byte:

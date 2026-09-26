@@ -10,11 +10,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const maxAsync = 2
-
-type job struct {
-}
-
 type Source string
 
 const (
