@@ -21,7 +21,7 @@ jobs:
           go-version: '1.27'
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.1
   # 2. Test and Build Job: Runs unit tests and builds the executable
@@ -47,4 +47,4 @@ jobs:
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Build Binary
-        run: env CGO_ENABLED=0 go build -v -o my-app ./cmd/main.go
+        run: env CGO_ENABLED=0 go build -v -o my-app ./cmd/sub/main.go
