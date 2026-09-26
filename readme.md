@@ -9,6 +9,7 @@
 ![Redis](https://img.shields.io/badge/9-DD0031?logo=redis&logoColor=white&labelColor=474748)
 
 [![Go CI/CD Pipeline](https://github.com/nelsw/bytelyon-client/actions/workflows/ci.yml/badge.svg)](https://github.com/nelsw/bytelyon-client/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/nelsw/bytelyon-client/graph/badge.svg?token=UfhfVEezAo)](https://codecov.io/github/nelsw/bytelyon-client)
 </div>
 
 ## Model
