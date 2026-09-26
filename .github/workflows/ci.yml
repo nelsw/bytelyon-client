@@ -48,3 +48,8 @@ jobs:
 
       - name: Build Binary
         run: env CGO_ENABLED=0 go build -v -o my-app ./cmd/sub/main.go
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
