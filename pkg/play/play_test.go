@@ -22,8 +22,8 @@ func TestScripts(t *testing.T) {
 
 	if err := Pages(bot.NewsType, 9, false, []string{"https://n.com"}); err != nil {
 		t.Fatal(err)
-	} else if got, want := testutil.Args(t, "news"), "-m false -u https://n.com"; got != want {
-		t.Errorf("news args = %q, want %q", got, want)
+	} else if got, want := testutil.Args(t, "pages"), "-t news -i 9 -m false -u https://n.com"; got != want {
+		t.Errorf("pages args = %q, want %q", got, want)
 	}
 
 	if err := Search(3, "golang", true); err != nil {

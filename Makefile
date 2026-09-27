@@ -77,7 +77,7 @@ test: banner install ## verbose richgo test; requires an .env file
 ƒø:
 	@printf "\n\033[1;95m❯\033[0m %s [\033[1;95m%s\033[0m]\n" "∙∙∙" "${name}"
 ƒç:
-	@printf "\033[1;92m❯\033[0m %s [\033[1;92m%s\033[0m]\n" "∙∙∙" "${name}"
+	@printf "\033[1;92m❯\033[0m %s [\033[1;92m%s\033[0m]" "∙∙∙" "${name}"
 banner:
 	@printf "\n[1;93m"
 	@printf "\n* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * "

@@ -89,7 +89,7 @@ func fetch(
 	}
 	wg.Wait()
 
-	todo := model.MakeSet[string]()
+	todo := model.NewSyncSet[string]()
 	for _, u := range urls {
 		wg.Go(func() {
 			n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(u)).String()
