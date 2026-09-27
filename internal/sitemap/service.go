@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
+	"github.com/goforj/godump"
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/model"
@@ -38,7 +40,7 @@ func Fetch(
 		sitemapID,
 		maxDepth,
 		urls,
-		"https://"+domain,
+		[]string{"https://" + domain},
 	); err != nil {
 		log.Warn().Err(err).Msg("failed to scrape sitemap")
 	}
@@ -52,7 +54,7 @@ func fetch(
 	sitemapID int,
 	depth int,
 	done *model.SyncSet[string],
-	urls ...string,
+	urls []string,
 ) error {
 
 	log.Debug().
@@ -65,18 +67,31 @@ func fetch(
 		return nil
 	}
 
-	if err := play.Pages(bot.SitemapType, sitemapID, headless, urls); err != nil {
-		log.Warn().Err(err).Msg("failed to scrape pages")
-		return err
+	chunkiness := 2
+
+	var chunks [][]string
+	if len(urls) <= chunkiness {
+		chunks = append(chunks, urls)
+	} else {
+		for i := range chunkiness {
+			chunks = append(chunks, urls[i*len(urls)/chunkiness:(i+1)*len(urls)/chunkiness])
+		}
 	}
+	godump.DumpJSON(chunks)
+	var wg sync.WaitGroup
+	for _, chunk := range chunks {
+		wg.Go(func() {
+			if err := play.Pages(bot.SitemapType, sitemapID, headless, chunk); err != nil {
+				log.Err(err).Msg("while scraping sitemap urls")
+			}
+		})
+	}
+	wg.Wait()
 
-	todo := model.NewSyncSet[string]()
-
-	path := filepath.Join(".storage", "sitemap", strconv.Itoa(sitemapID))
-
+	todo := model.MakeSet[string]()
 	for _, u := range urls {
 		n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(u)).String()
-		p := filepath.Join(path, n)
+		p := filepath.Join(".storage", string(bot.SitemapType), strconv.Itoa(sitemapID), n)
 
 		_, imgKey, d := play.HandleFiles(p)
 
@@ -88,18 +103,35 @@ func fetch(
 		done.Add(u)
 
 		links, _ := d.Get("links").([]any)
+
+		log.Debug().Int("links", len(links)).Str("url", u).Send()
+
 		for _, link := range links {
-			str, _ := link.(string)
-			if str != "" && url.Domain(str) == domain && !done.Has(str) && !todo.Has(str) {
+			if str, _ := link.(string); url.Domain(str) == domain && !done.Has(str) {
 				todo.Add(str)
 			}
 		}
 	}
 
-	if depth > 0 {
-		return fetch(domain, headless, sitemapID, depth-1, done, todo.Keys()...)
+	nextUrls := todo.Keys()
+	nextDepth := depth - 1
+
+	log.Debug().
+		Int("next_level", nextDepth).
+		Int("next_urls", len(nextUrls)).
+		Msg("scraped pages")
+
+	if nextDepth < 0 {
+		done.AddAll(nextUrls)
+		return nil
 	}
 
-	done.AddAll(todo.Keys())
-	return nil
+	return fetch(
+		domain,
+		headless,
+		sitemapID,
+		nextDepth,
+		done,
+		nextUrls,
+	)
 }

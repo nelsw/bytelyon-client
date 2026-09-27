@@ -11,14 +11,14 @@ func UpsertArticle(botID int, a *Article) {
 INSERT INTO articles (bot_id, url, title, published_at, img_alt, img_url, source, description, body, created_at, updated_at, publisher, keywords)
 VALUES (@bot_id, @url, @title, @published_at, @img_alt, @img_url, @source, @description, @body, NOW(), NOW(), @publisher, @keywords)
 ON CONFLICT (url, bot_id)
-DO UPDATE SET title = EXCLUDED.title,
-              img_alt = EXCLUDED.img_alt,
-              img_url = EXCLUDED.img_url,
-              source = EXCLUDED.source,
-              description = EXCLUDED.description,
-              body = EXCLUDED.body,
-              publisher = EXCLUDED.publisher,
-              keywords = EXCLUDED.keywords,
+DO UPDATE SET title = excluded.title,
+              img_alt = excluded.img_alt,
+              img_url = excluded.img_url,
+              source = excluded.source,
+              description = excluded.description,
+              body = excluded.body,
+              publisher = excluded.publisher,
+              keywords = excluded.keywords,
               updated_at = NOW()
 `
 	d := pgx.StrictNamedArgs{
@@ -36,5 +36,7 @@ DO UPDATE SET title = EXCLUDED.title,
 	}
 	if err := db.Exec(sql, d); err != nil {
 		log.Warn().Err(err).Msg("failed to save article")
+	} else {
+		log.Debug().EmbedObject(a).Msg("💾")
 	}
 }

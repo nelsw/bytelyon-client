@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goforj/godump"
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/http"
@@ -79,25 +80,46 @@ func Fetch(
 		return
 	}
 
-	if err := play.News(headless, s.Keys()); err != nil {
-		log.Err(err).Send()
+	urls := s.Keys()
+
+	chunkiness := 2
+
+	var chunks [][]string
+	if len(urls) <= chunkiness {
+		chunks = append(chunks, urls)
+	} else {
+		for i := range chunkiness {
+			chunks = append(chunks, urls[i*len(urls)/chunkiness:(i+1)*len(urls)/chunkiness])
+		}
 	}
 
-	path := filepath.Join(".storage", "news", strconv.Itoa(botID))
+	godump.DumpJSON(chunks)
+
+	for _, chunk := range chunks {
+		wg.Go(func() {
+			if err := play.Pages(bot.NewsType, botID, headless, chunk); err != nil {
+				log.Err(err).Msg("while scraping news urls")
+			}
+		})
+	}
+	wg.Wait()
 
 	for _, a := range arr {
-		n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String()
-		p := filepath.Join(path, n)
-		_, _, d := play.HandleFiles(p)
+		wg.Go(func() {
+			n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(a.URL)).String()
+			p := filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), n)
+			_, _, d := play.HandleFiles(p)
 
-		d.Put("bot_id", botID)
-		d.Put("source", a.Source)
-		d.Put("title", a.Title)
-		d.Put("publisher", a.Publisher)
-		if a.Desc != "" {
-			d.Put("description", a.Desc)
-		}
+			d.Put("bot_id", botID)
+			d.Put("source", a.Source)
+			d.Put("title", a.Title)
+			d.Put("publisher", a.Publisher)
+			if a.Desc != "" {
+				d.Put("description", a.Desc)
+			}
 
-		UpsertArticle(botID, a)
+			UpsertArticle(botID, a)
+		})
 	}
+	wg.Wait()
 }

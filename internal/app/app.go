@@ -54,9 +54,11 @@ func HandleBot(b bot.Model) {
 		return
 	}
 
-	log.Info().EmbedObject(&b).Send()
-
-	defer bot.UpdateFn(b)()
+	log.Info().EmbedObject(&b).Msg("⏳")
+	defer func() {
+		bot.Update(b)
+		log.Info().EmbedObject(&b).Msg("✅")
+	}()
 
 	switch b.Type {
 	case bot.NewsType:

@@ -3,19 +3,24 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#   "playwright",
 #   "cloakbrowser",
 #   "cloakbrowser[geoip]",
+#   "playwright",
+#   "structlog",
 # ]
 # ///
 import argparse
 import json
+import structlog
 from pathlib import Path
 from urllib.parse import urldefrag
 from uuid import uuid5, NAMESPACE_URL
 
 from cloakbrowser import launch, ProxySettings
 from playwright.sync_api import Browser, Page, Error
+
+
+
 
 KEYWORD_ATTRS = ["property='article:tag'", "name='news_keywords'", "name='keywords'"]
 DESCRIPTION_ATTRS = ["name='description'", "property='og:description'", "name='twitter:description'", "name='abstract'"]
@@ -115,6 +120,19 @@ def handle(
             'content_key': src_key,
         }, file, indent=4)
 
+def rename_log_level(_, __, event_dict):
+    # Map old level names to new ones
+    level_mapping = {
+        "debug": "DBG",
+        "info": "INF",
+        "warning": "WRN",
+        "error": "ERR",
+        "critical": "CRT",
+    }
+    if "level" in event_dict:
+        current_level = event_dict["level"]
+        event_dict["level"] = level_mapping.get(current_level, current_level)
+    return event_dict
 
 def main(
         path: str,
@@ -122,25 +140,54 @@ def main(
         headless: bool,
         proxy: ProxySettings | None,
 ) -> None:
+    renderer = structlog.dev.ConsoleRenderer(
+        colors=True,
+        level_styles={
+            "DBG": "\033[0;35m",
+            "INF": "\033[0;32m",
+            "WRN": "\033[0;33m",
+            "ERR": "\033[0;31m",
+            "CRT": "\033[41m\033[0;37m",
+        }
+    )
+    # structlog always renders levels as [INF]; strip the brackets to match the Go logs
+    for column in renderer.columns:
+        if column.key == "level":
+            column.formatter = lambda key, value, fmt=column.formatter: fmt(key, value)[1:-1]
+
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            rename_log_level,
+            structlog.processors.TimeStamper(fmt="%-I:%M%p", utc=False),
+            renderer,
+        ]
+    )
+    log = structlog.get_logger()
     Path(path).mkdir(parents=True, exist_ok=True)
+
     if proxy is not None:
         browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
     else:
         browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
 
+    size = len(urls)
     page = browser.new_page()
-    for url in urls:
+    for idx, url in enumerate(urls):
         try:
             handle(path, url, page)
-        except Error:
-            pass
+            log.info(f"{idx}/{size} - {url}")
+        except Error as e:
+            log.error(f"{idx}/{size} - {e}")
+            continue
+
     browser.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the news 🤖")
-    _ = parser.add_argument('-t', '--type', type=str, default='')
-    _ = parser.add_argument('-i', '--id', type=int, default='')
+    parser = argparse.ArgumentParser(description="Run the pages 🤖")
+    _ = parser.add_argument('-t', '--type', type=str)
+    _ = parser.add_argument('-i', '--id', type=int)
     _ = parser.add_argument('-u', '--urls', help='Page URLs', nargs='+')
     _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
     _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')

@@ -51,6 +51,7 @@ func MakeZerolog() zerolog.Logger {
 			"#", "id",
 			"t", "type",
 			"q", "query",
+			"u", "url", "urls",
 		},
 		FormatLevel: func(a any) string {
 			if a == nil || a == "<nil>" {

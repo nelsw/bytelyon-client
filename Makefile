@@ -30,10 +30,12 @@ project-path: ## Print the project path.
 	@echo $(PROJECT_PATH)
 
 ##@ Run
+tui: ## launch the interactive TUI for running and inspecting make targets
+	@go run ./cmd/tui
 all: ## periodically polls and works in sequence all workable bots
 	@$(MAKE) it APP=all || true
 one: ## query the first workable bot, work it, and exit
-	@$(MAKE) it APP=one
+	@$(MAKE) it APP=one || true
 sub: ## subscribe to the server for work when it's ready
 	@$(MAKE) it APP=sub || true
 it: banner ## helper target for aforementioned targets, requires argument 'APP=<all|one|sub>'
@@ -42,43 +44,33 @@ it: banner ## helper target for aforementioned targets, requires argument 'APP=<
 	@$(MAKE) ƒç name=run-$(APP)
 
 ##@ Project
-fmt: ## formats all go files
+lint: ## checks formats all go files
 	SRC=$(shell find . -name "*.go")
-	@$(MAKE) ƒø name=fmt
-	@test -z $(shell gofmt -l $(SRC)) || (gofmt -d $(SRC); exit 1)
-	@$(MAKE) ƒç name=fmt
-lint: ## runs verbose golangci-lint
 	@$(MAKE) ƒø name=lint
+	@test -z $(shell gofmt -l $(SRC)) || (gofmt -d $(SRC); exit 1)
 	@golangci-lint run -v
 	@$(MAKE) ƒç name=lint
 
 ##@ Source
 clean: ## removes all files from .storage directories and clears the .bin folder
 	@$(MAKE) ƒø name=clean
-	@find .storage -type f -exec truncate -s 0 {} +
-	@rm -f ./bin/all ./bin/one ./bin/sub
+	@rm -rf ./bin/all ./bin/one ./bin/sub .storage/*/*
 	@$(MAKE) ƒç name=clean
-install: clean ## gets and install deps for testing and running the app
+install: clean ## gets and installs all deps for test/dev/prod before a tidy
+	@$(MAKE) ƒø name=deps
 	@go get -u github.com/kyoh86/richgo
 	@go install github.com/joho/godotenv/cmd/godotenv@latest
-deps: install ## tidy, verbose get (libs) and tidy again
-	@$(MAKE) ƒø name=deps
-	@go mod tidy
 	@go get -v ./...
 	@go mod tidy
 	@$(MAKE) ƒç name=deps
-build: deps ## generate code (jic) and build the executable
+build: install ## generate code (jic) and build the executable
 	@$(MAKE) ƒø name=build-$(APP)
 	@go generate ./...
 	@go build -o ./bin/$(APP) ./cmd/$(APP)
 	@$(MAKE) ƒç name=build-$(APP)
 
 ##@ Test
-test: banner deps ## verbose test; requires an .env file
-	@$(MAKE) ƒø name=test
-	@godotenv -f .env go test -v ./...
-	@$(MAKE) ƒç name=test
-rich: banner deps ## verbose richgo test; requires an .env file
+test: banner install ## verbose richgo test; requires an .env file
 	@$(MAKE) ƒø name=rich
 	@godotenv -f .env richgo test -coverprofile=coverage.out -v ./...
 	@gocovsh
