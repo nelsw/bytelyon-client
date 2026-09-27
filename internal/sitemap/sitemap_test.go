@@ -59,6 +59,11 @@ func TestFetchCrawl(t *testing.T) {
 		t.Fatalf("expected 3 page upserts and 1 sitemap update, got %+v", calls)
 	}
 
+	// pages are upserted concurrently, so order them by url
+	slices.SortFunc(calls[:3], func(a, b testutil.Call) int {
+		return strings.Compare(a.Args["url"].(string), b.Args["url"].(string))
+	})
+
 	var pages []string
 	for _, c := range calls[:3] {
 		if !strings.Contains(c.SQL, "INSERT INTO pages") || c.Args["pageable_id"] != 8 || c.Args["domain"] != "example.com" {

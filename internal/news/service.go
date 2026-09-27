@@ -109,12 +109,18 @@ func Fetch(
 			p := filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), n)
 			_, _, d := play.HandleFiles(p)
 
-			a.Body = d.Get("body").(string)
-			a.Source = d.Get("source").(string)
-			a.Title = d.Get("title").(string)
-			a.Publisher = d.Get("publisher").(string)
+			// only override what the rss feed gave us when the scraped page has something better
+			set := func(dst *string, key string) {
+				if s, _ := d.Get(key).(string); s != "" {
+					*dst = s
+				}
+			}
+			set(&a.Body, "body")
+			set(&a.Source, "source")
+			set(&a.Title, "title")
+			set(&a.Publisher, "publisher")
 			if a.Desc != "" {
-				a.Desc = d.Get("description").(string)
+				set(&a.Desc, "description")
 			}
 
 			UpsertArticle(botID, a)

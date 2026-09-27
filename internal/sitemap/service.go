@@ -96,6 +96,10 @@ func fetch(
 			p := filepath.Join(".storage", string(bot.SitemapType), strconv.Itoa(sitemapID), n)
 
 			_, imgKey, d := play.HandleFiles(p)
+			if d.Empty() {
+				// the script failed to scrape this page, so there's nothing to save
+				return
+			}
 
 			title, _ := d.Get("title").(string)
 			meta, _ := d.Get("meta").(map[string]any)

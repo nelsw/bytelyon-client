@@ -169,14 +169,14 @@ func TestDecodeGoogleLinkFailures(t *testing.T) {
 func files(t *testing.T, botID int, url string) {
 	t.Helper()
 	name := uuid.NewSHA1(uuid.NameSpaceURL, []byte(url)).String()
-	testutil.Files(t, filepath.Join(".storage", "sitemap", strconv.Itoa(botID), name), `{"body":"b"}`)
+	testutil.Files(t, filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), name), `{"body":"b"}`)
 }
 
 func TestFetch(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "news", 0)
+	testutil.Script(t, "pages", 0)
 
 	now := time.Now().UTC()
 	fresh, stale := now.Format(time.RFC1123Z), now.Add(-48*time.Hour).Format(time.RFC1123)
@@ -198,8 +198,8 @@ func TestFetch(t *testing.T) {
 
 	Fetch(3, "golang", true, now.Add(-time.Hour), blacklist)
 
-	if got, want := testutil.Args(t, "news"), "-m true -u "+bingURL+" "+googleURL; got != want {
-		t.Errorf("news args = %q, want %q", got, want)
+	if got, want := testutil.Args(t, "pages"), "-t news -i 3 -m true -u "+bingURL+" "+googleURL; got != want {
+		t.Errorf("pages args = %q, want %q", got, want)
 	}
 
 	calls := p.Execs()
@@ -209,7 +209,7 @@ func TestFetch(t *testing.T) {
 	slices.SortFunc(calls, func(a, b testutil.Call) int { return strings.Compare(a.Args["url"].(string), b.Args["url"].(string)) })
 
 	if b := calls[0].Args; b["url"] != bingURL || b["source"] != "Bing News" || b["publisher"] != "Bing Pub" ||
-		b["title"] != "Bing story" || b["description"] != "desc" || b["bot_id"] != 3 {
+		b["title"] != "Bing story" || b["description"] != "desc" || b["body"] != "b" || b["bot_id"] != 3 {
 		t.Errorf("bing article = %v", b)
 	}
 	if g := calls[1].Args; g["url"] != googleURL || g["source"] != "Google News" || g["publisher"] != "Google Pub" ||
@@ -222,7 +222,7 @@ func TestFetchPartialFailures(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "news", 1)
+	testutil.Script(t, "pages", 1)
 
 	testutil.Transport(t, &fake{
 		bingCode: http.StatusInternalServerError,
