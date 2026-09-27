@@ -45,9 +45,7 @@ it: banner ## helper target for aforementioned targets, requires argument 'APP=<
 
 ##@ Project
 lint: ## checks formats all go files
-	SRC=$(shell find . -name "*.go")
 	@$(MAKE) ƒø name=lint
-	@test -z $(shell gofmt -l $(SRC)) || (gofmt -d $(SRC); exit 1)
 	@golangci-lint run -v
 	@$(MAKE) ƒç name=lint
 

@@ -3,10 +3,10 @@ package sitemap
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 
-	"github.com/goforj/godump"
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/model"
@@ -14,6 +14,8 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/url"
 	"github.com/rs/zerolog/log"
 )
+
+const chunkiness = 2
 
 var maxDepth int
 
@@ -67,22 +69,21 @@ func fetch(
 		return nil
 	}
 
-	chunkiness := 2
-
-	var chunks [][]string
-	if len(urls) <= chunkiness {
-		chunks = append(chunks, urls)
-	} else {
-		for i := range chunkiness {
-			chunks = append(chunks, urls[i*len(urls)/chunkiness:(i+1)*len(urls)/chunkiness])
+	chunks := make(chan []string)
+	go func() {
+		for chunk := range slices.Chunk(urls, 10) {
+			chunks <- chunk
 		}
-	}
-	godump.DumpJSON(chunks)
+		close(chunks)
+	}()
+
 	var wg sync.WaitGroup
-	for _, chunk := range chunks {
+	for range chunkiness {
 		wg.Go(func() {
-			if err := play.Pages(bot.SitemapType, sitemapID, headless, chunk); err != nil {
-				log.Err(err).Msg("while scraping sitemap urls")
+			for chunk := range chunks {
+				if err := play.Pages(bot.SitemapType, sitemapID, headless, chunk); err != nil {
+					log.Err(err).Msg("while scraping sitemap urls")
+				}
 			}
 		})
 	}
@@ -90,28 +91,31 @@ func fetch(
 
 	todo := model.MakeSet[string]()
 	for _, u := range urls {
-		n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(u)).String()
-		p := filepath.Join(".storage", string(bot.SitemapType), strconv.Itoa(sitemapID), n)
+		wg.Go(func() {
+			n := uuid.NewSHA1(uuid.NameSpaceURL, []byte(u)).String()
+			p := filepath.Join(".storage", string(bot.SitemapType), strconv.Itoa(sitemapID), n)
 
-		_, imgKey, d := play.HandleFiles(p)
+			_, imgKey, d := play.HandleFiles(p)
 
-		title, _ := d.Get("title").(string)
-		meta, _ := d.Get("meta").(map[string]any)
+			title, _ := d.Get("title").(string)
+			meta, _ := d.Get("meta").(map[string]any)
 
-		UpsertPage(sitemapID, domain, u, title, imgKey, meta)
+			UpsertPage(sitemapID, domain, u, title, imgKey, meta)
 
-		done.Add(u)
+			done.Add(u)
 
-		links, _ := d.Get("links").([]any)
+			links, _ := d.Get("links").([]any)
 
-		log.Debug().Int("links", len(links)).Str("url", u).Send()
+			log.Debug().Int("links", len(links)).Str("url", u).Send()
 
-		for _, link := range links {
-			if str, _ := link.(string); url.Domain(str) == domain && !done.Has(str) {
-				todo.Add(str)
+			for _, link := range links {
+				if str, _ := link.(string); url.Domain(str) == domain && !done.Has(str) {
+					todo.Add(str)
+				}
 			}
-		}
+		})
 	}
+	wg.Wait()
 
 	nextUrls := todo.Keys()
 	nextDepth := depth - 1

@@ -56,7 +56,7 @@ func ParseMakefile(path string) ([]Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var (
 		targets  []Target

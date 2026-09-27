@@ -86,9 +86,9 @@ def collect_body(page: Page) -> str:
 def handle(
         path: str,
         url: str,
-        page: Page,
+        bro: Browser,
 ) -> None:
-
+    page = bro.new_page()
     page.goto(url=url)
     page.wait_for_load_state('domcontentloaded', timeout=5_000)
 
@@ -119,6 +119,7 @@ def handle(
             'screenshot_key': img_key,
             'content_key': src_key,
         }, file, indent=4)
+    page.close()
 
 def rename_log_level(_, __, event_dict):
     # Map old level names to new ones
@@ -172,10 +173,9 @@ def main(
         browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
 
     size = len(urls)
-    page = browser.new_page()
     for idx, url in enumerate(urls):
         try:
-            handle(path, url, page)
+            handle(path, url, browser)
             log.info(f"{idx}/{size} - {url}")
         except Error as e:
             log.error(f"{idx}/{size} - {e}")

@@ -2,12 +2,12 @@ package news
 
 import (
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/goforj/godump"
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/http"
@@ -15,6 +15,8 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/rs/zerolog/log"
 )
+
+const chunkiness = 2
 
 func Fetch(
 	botID int,
@@ -80,25 +82,22 @@ func Fetch(
 		return
 	}
 
-	urls := s.Keys()
-
-	chunkiness := 2
-
-	var chunks [][]string
-	if len(urls) <= chunkiness {
-		chunks = append(chunks, urls)
-	} else {
-		for i := range chunkiness {
-			chunks = append(chunks, urls[i*len(urls)/chunkiness:(i+1)*len(urls)/chunkiness])
+	chunks := make(chan []string)
+	go func() {
+		for chunk := range slices.Chunk(s.Keys(), 10) {
+			chunks <- chunk
 		}
-	}
+		close(chunks)
+	}()
 
-	godump.DumpJSON(chunks)
-
-	for _, chunk := range chunks {
+	for range chunkiness {
 		wg.Go(func() {
-			if err := play.Pages(bot.NewsType, botID, headless, chunk); err != nil {
-				log.Err(err).Msg("while scraping news urls")
+			for chunk := range chunks {
+				wg.Go(func() {
+					if err := play.Pages(bot.NewsType, botID, headless, chunk); err != nil {
+						log.Err(err).Msg("while scraping news urls")
+					}
+				})
 			}
 		})
 	}
@@ -110,12 +109,12 @@ func Fetch(
 			p := filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), n)
 			_, _, d := play.HandleFiles(p)
 
-			d.Put("bot_id", botID)
-			d.Put("source", a.Source)
-			d.Put("title", a.Title)
-			d.Put("publisher", a.Publisher)
+			a.Body = d.Get("body").(string)
+			a.Source = d.Get("source").(string)
+			a.Title = d.Get("title").(string)
+			a.Publisher = d.Get("publisher").(string)
 			if a.Desc != "" {
-				d.Put("description", a.Desc)
+				a.Desc = d.Get("description").(string)
 			}
 
 			UpsertArticle(botID, a)
