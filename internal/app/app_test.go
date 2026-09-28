@@ -55,7 +55,7 @@ func TestHandleBots(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	p := setup(t)
-	cache.Put("k", "v") // opens the redis client
+	cache.Put(13, "k", "v") // opens the redis client
 
 	working.Add(1)
 	go func() {

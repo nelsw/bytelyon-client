@@ -57,7 +57,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func rss(items ...string) string {
+func rssXml(items ...string) string {
 	return `<rss><channel>` + strings.Join(items, "") + `</channel></rss>`
 }
 
@@ -181,12 +181,12 @@ func TestFetch(t *testing.T) {
 	now := time.Now().UTC()
 	fresh, stale := now.Format(time.RFC1123Z), now.Add(-48*time.Hour).Format(time.RFC1123)
 	testutil.Transport(t, &fake{
-		bing: rss(
+		bing: rssXml(
 			item(bingLink(bingURL), "Bing story", fresh, "Bing Pub"),
 			item(bingLink("https://example.com/old"), "Old story", stale, "Bing Pub"),
 			item(bingLink("https://example.com/spam"), "spam", fresh, "Bing Pub"),
 		),
-		google:  rss(item(googleLink, "Google story - Google Pub", fresh, "ignored")),
+		google:  rssXml(item(googleLink, "Google story - Google Pub", fresh, "ignored")),
 		article: articleOK,
 		batch:   batchOK,
 	})
@@ -226,7 +226,7 @@ func TestFetchPartialFailures(t *testing.T) {
 
 	testutil.Transport(t, &fake{
 		bingCode: http.StatusInternalServerError,
-		google:   rss(item("https://news.google.com/rss/topics/x", "Untitled", time.Now().Format(time.RFC1123Z), "")),
+		google:   rssXml(item("https://news.google.com/rss/topics/x", "Untitled", time.Now().Format(time.RFC1123Z), "")),
 	})
 
 	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
@@ -240,7 +240,7 @@ func TestFetchPartialFailures(t *testing.T) {
 func TestFetchNothingNew(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Workdir(t)
-	testutil.Transport(t, &fake{bing: rss(), google: rss()})
+	testutil.Transport(t, &fake{bing: rssXml(), google: rssXml()})
 
 	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
 

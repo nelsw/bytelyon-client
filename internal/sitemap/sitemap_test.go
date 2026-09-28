@@ -120,7 +120,7 @@ func TestRepoErrors(t *testing.T) {
 	p.ExecErr = errors.New("boom")
 
 	UpsertPage(1, "d", "u", "t", "k", nil) // logs errors
-	UpdateSitemap(1, nil)
+	UpdateSitemap(1, "")
 
 	if calls := p.Execs(); len(calls) != 2 || calls[0].Args["meta"] == nil {
 		t.Errorf("execs = %+v", calls)
