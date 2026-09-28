@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/nelsw/bytelyon-client/pkg/fs"
-	"github.com/nelsw/bytelyon-client/pkg/util"
+	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog/log"
 )
 
@@ -29,15 +29,15 @@ func (j *Job) Args() []string {
 
 func (j *Job) Success(bytes []byte) {
 
-	var p Page
+	var p model.Page
 	if err := json.Unmarshal(bytes, &p); err != nil {
 		log.Err(err).Msg("failed to unmarshal page")
 		return
 	}
 
 	key := filepath.Join("search", strconv.Itoa(j.id), j.query)
-	_ = fs.Put(key+".png", util.Data(p.Img))
-	_ = fs.Put(key+".html", util.Data(p.Src))
+	_ = fs.Put(key+".png", p.ScreenshotBytes())
+	_ = fs.Put(key+".html", p.ContentBytes())
 
 	UpdateSearch(j.id, key+".png", key+".html", p.Data)
 }

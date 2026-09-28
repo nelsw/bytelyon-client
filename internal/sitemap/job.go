@@ -14,7 +14,6 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/nelsw/bytelyon-client/pkg/url"
-	"github.com/nelsw/bytelyon-client/pkg/util"
 	"github.com/rs/zerolog/log"
 )
 
@@ -69,7 +68,7 @@ func (j *Job) Success(out []byte) {
 		strconv.Itoa(j.id),
 		uuid.NewSHA1(uuid.NameSpaceURL, []byte(j.url)).String(),
 	) + ".png"
-	_ = fs.Put(key, util.Data(page.Screenshot))
+	_ = fs.Put(key, page.ScreenshotBytes())
 	UpsertPage(j.id, j.domain, j.url, page.Title, key, page.Meta)
 	cache.PutTime(j.String(), time.Now())
 
@@ -84,7 +83,7 @@ func (j *Job) Success(out []byte) {
 			j.headless,
 			j.domain,
 			j.frequency,
-			link,
+			url.Clean(link),
 			nextDepth,
 		})
 	}
