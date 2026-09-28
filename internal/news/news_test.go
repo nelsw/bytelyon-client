@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
+	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/internal/testutil"
 	"github.com/rs/zerolog"
@@ -125,12 +123,12 @@ func TestDecodeGoogleLink(t *testing.T) {
 	if got := decodeGoogleLink(googleLink); got != googleURL {
 		t.Fatalf("decodeGoogleLink() = %q, want %q", got, googleURL)
 	}
-	if cached, _ := m.Get(googleLink); cached != googleURL {
+	if cached, _ := m.DB(12).Get(googleLink); cached != googleURL {
 		t.Errorf("decoded url was not cached, got %q", cached)
 	}
 
 	// a cache hit skips the network entirely
-	_ = m.Set(googleLink, "https://cached.example")
+	_ = m.DB(12).Set(googleLink, "https://cached.example")
 	if got := decodeGoogleLink(googleLink); got != "https://cached.example" {
 		t.Errorf("decodeGoogleLink() = %q, want the cached url", got)
 	}
@@ -165,18 +163,11 @@ func TestDecodeGoogleLinkFailures(t *testing.T) {
 	}
 }
 
-// files writes the script output news.Fetch reads for the article at url.
-func files(t *testing.T, botID int, url string) {
-	t.Helper()
-	name := uuid.NewSHA1(uuid.NameSpaceURL, []byte(url)).String()
-	testutil.Files(t, filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), name), `{"body":"b"}`)
-}
-
 func TestFetch(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "pages", 0)
+	testutil.Script(t, "sync_news", 0)
 
 	now := time.Now().UTC()
 	fresh, stale := now.Format(time.RFC1123Z), now.Add(-48*time.Hour).Format(time.RFC1123)
@@ -190,16 +181,17 @@ func TestFetch(t *testing.T) {
 		article: articleOK,
 		batch:   batchOK,
 	})
-	files(t, 3, bingURL)
-	files(t, 3, googleURL)
+	testutil.Output(t, bingURL, `{"body":"b"}`)
+	testutil.Output(t, googleURL, `{"body":"b"}`)
 
 	var blacklist bot.Blacklist
 	_ = blacklist.Scan("spam")
 
 	Fetch(3, "golang", true, now.Add(-time.Hour), blacklist)
 
-	if got, want := testutil.Args(t, "pages"), "-t news -i 3 -m true -u "+bingURL+" "+googleURL; got != want {
-		t.Errorf("pages args = %q, want %q", got, want)
+	testutil.Eventually(t, "article upserts", func() bool { return len(p.Execs()) >= 2 })
+	if got, want := testutil.Args(t, "sync_news"), "-m true -u "+bingURL+"\n-m true -u "+googleURL; got != want {
+		t.Errorf("sync_news args = %q, want %q", got, want)
 	}
 
 	calls := p.Execs()
@@ -222,7 +214,7 @@ func TestFetchPartialFailures(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "pages", 1)
+	testutil.Script(t, "sync_news", 1)
 
 	testutil.Transport(t, &fake{
 		bingCode: http.StatusInternalServerError,
@@ -231,8 +223,13 @@ func TestFetchPartialFailures(t *testing.T) {
 
 	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
 
-	// the undecodable google article is still saved (with an empty url) even though the script failed
-	if calls := p.Execs(); len(calls) != 1 || calls[0].Args["title"] != "Untitled" {
+	// the undecodable google article is still scraped (with an empty url), but nothing is saved when the script fails
+	testutil.Eventually(t, "script run", func() bool { _, err := os.Stat("sync_news.args"); return err == nil })
+	time.Sleep(50 * time.Millisecond)
+	if got := testutil.Args(t, "sync_news"); got != "-m false -u" {
+		t.Errorf("sync_news args = %q", got)
+	}
+	if calls := p.Execs(); len(calls) != 0 {
 		t.Errorf("execs = %+v", calls)
 	}
 }

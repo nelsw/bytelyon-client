@@ -2,7 +2,6 @@ package search
 
 import (
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strconv"
 
@@ -24,7 +23,7 @@ func (j *Job) Name() string {
 func (j *Job) Args() []string {
 	return []string{
 		"-m", strconv.FormatBool(j.headless),
-		"-q", fmt.Sprintf("\"%s\"", j.query),
+		"-q", j.query,
 	}
 }
 

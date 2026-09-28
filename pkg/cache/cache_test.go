@@ -17,7 +17,7 @@ func TestPutGet(t *testing.T) {
 	if got, err := cache.Get(13, "k"); err != nil || got != "v" {
 		t.Errorf("Get() = %q, %v", got, err)
 	}
-	if ttl := m.TTL("k"); ttl != 6*time.Hour {
+	if ttl := m.DB(13).TTL("k"); ttl != 6*time.Hour {
 		t.Errorf("TTL = %v, want 6h", ttl)
 	}
 	if _, err := cache.Get(13, "missing"); !errors.Is(err, redis.Nil) {

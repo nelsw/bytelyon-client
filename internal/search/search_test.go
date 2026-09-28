@@ -2,8 +2,10 @@ package search
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nelsw/bytelyon-client/internal/testutil"
 )
@@ -12,16 +14,17 @@ func TestFetch(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Workdir(t)
 	testutil.Script(t, "sync_search", 0)
-	testutil.Files(t, ".storage/search/4/golang", `{"results":[1,2]}`)
+	testutil.Output(t, `"golang"`, `{"data":{"results":[1,2]}}`)
 
 	Fetch(4, "golang", true)
 
-	if got, want := testutil.Args(t, "sync_search"), "-i 4 -q golang -m true"; got != want {
+	testutil.Eventually(t, "search update", func() bool { return len(p.Execs()) == 1 })
+	if got, want := testutil.Args(t, "sync_search"), `-m true -q "golang"`; got != want {
 		t.Errorf("args = %q, want %q", got, want)
 	}
 
 	calls := p.Execs()
-	if len(calls) != 1 || !strings.Contains(calls[0].SQL, "UPDATE serps") {
+	if !strings.Contains(calls[0].SQL, "UPDATE serps") {
 		t.Fatalf("execs = %+v", calls)
 	}
 	args := calls[0].Args
@@ -40,6 +43,8 @@ func TestFetchScriptFailure(t *testing.T) {
 
 	Fetch(4, "golang", true)
 
+	testutil.Eventually(t, "script run", func() bool { _, err := os.Stat("sync_search.args"); return err == nil })
+	time.Sleep(50 * time.Millisecond)
 	if calls := p.Execs(); len(calls) != 0 {
 		t.Errorf("nothing should be saved when the script fails: %+v", calls)
 	}

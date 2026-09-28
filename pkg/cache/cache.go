@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -23,24 +24,18 @@ const (
 var (
 	exp = time.Hour * 6
 	ctx = context.Background()
-	rcm = map[int]*redis.Client{
-		pubSub: nil,
-		pageDB: nil,
-		linkDB: nil,
-		xAnyDB: nil,
-	}
+	rcm = map[int]*redis.Client{}
+	mu  sync.Mutex
 )
 
-func init() {
-	for db, client := range rcm {
-		if client == nil {
-			rcm[db] = connect(db)
-		}
-	}
-}
-
-// connect lazily creates the client on first use.
+// connect lazily creates the client for db on first use and reuses it thereafter.
 func connect(db int) *redis.Client {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client, ok := rcm[db]; ok {
+		return client
+	}
 
 	client := redis.NewClient(&redis.Options{
 		Addr:         os.Getenv("REDIS_ADDR"),
@@ -51,14 +46,15 @@ func connect(db int) *redis.Client {
 	})
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Panic().Err(err).Str("addr", client.Options().Addr).Msg("redis ping failed")
+		log.Err(err).Str("addr", client.Options().Addr).Msg("redis ping failed")
 	}
+	rcm[db] = client
 	return client
 }
 
 // Subscribe calls fn with each message published to the bots channel until the client is closed.
 func Subscribe(fn func(payload string)) {
-	sub := rcm[pubSub].Subscribe(ctx, channel)
+	sub := connect(pubSub).Subscribe(ctx, channel)
 	defer func(sub *redis.PubSub) {
 		if err := sub.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
 			log.Err(err).Send()
@@ -78,31 +74,31 @@ func Subscribe(fn func(payload string)) {
 }
 
 func Put(db int, key string, val any) {
-	if err := rcm[db].Set(ctx, key, val, exp).Err(); err != nil {
+	if err := connect(db).Set(ctx, key, val, exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
 func Get(db int, key string) (string, error) {
-	return rcm[db].Get(ctx, key).Result()
+	return connect(db).Get(ctx, key).Result()
 }
 
 func PutLink(key string, val any) {
-	rcm[linkDB].Set(ctx, key, val, exp)
+	connect(linkDB).Set(ctx, key, val, exp)
 }
 
 func GetLink(key string) (string, error) {
-	return rcm[linkDB].Get(ctx, key).Result()
+	return connect(linkDB).Get(ctx, key).Result()
 }
 
 func PutPage(key string) {
-	if err := rcm[pageDB].Set(ctx, key, time.Now().UnixMilli(), exp).Err(); err != nil {
+	if err := connect(pageDB).Set(ctx, key, time.Now().UnixMilli(), exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
 func GetPage(key string) time.Time {
-	val, err := rcm[pageDB].Get(ctx, key).Int64()
+	val, err := connect(pageDB).Get(ctx, key).Int64()
 	if err != nil {
 		return time.Time{}
 	}
@@ -110,7 +106,7 @@ func GetPage(key string) time.Time {
 }
 
 func GetPageKeys(pattern string) []string {
-	vals, err := rcm[pageDB].Keys(ctx, pattern).Result()
+	vals, err := connect(pageDB).Keys(ctx, pattern).Result()
 	if err != nil {
 		log.Err(err).Send()
 		return nil
@@ -119,12 +115,13 @@ func GetPageKeys(pattern string) []string {
 }
 
 func Close() {
-	for _, client := range rcm {
-		if client == nil {
-			continue
-		}
+	mu.Lock()
+	defer mu.Unlock()
+
+	for db, client := range rcm {
 		if err := client.Close(); err != nil {
 			log.Err(err).Send()
 		}
+		delete(rcm, db)
 	}
 }

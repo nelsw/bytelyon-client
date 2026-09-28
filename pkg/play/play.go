@@ -24,8 +24,9 @@ type queue struct {
 }
 
 var (
-	closed bool
-	queues []*queue
+	closed    bool
+	closeOnce sync.Once
+	queues    []*queue
 )
 
 func init() {
@@ -56,16 +57,19 @@ func init() {
 	}
 }
 
+// Close stops accepting work and waits for queued jobs to finish; calls after the first are no-ops.
 func Close() {
-	closed = true
-	var wg sync.WaitGroup
-	for _, q := range queues {
-		wg.Go(func() {
-			close(q.ch)
-			q.wg.Wait()
-		})
-	}
-	wg.Wait()
+	closeOnce.Do(func() {
+		closed = true
+		var wg sync.WaitGroup
+		for _, q := range queues {
+			wg.Go(func() {
+				close(q.ch)
+				q.wg.Wait()
+			})
+		}
+		wg.Wait()
+	})
 }
 
 func Go(p Playable) {

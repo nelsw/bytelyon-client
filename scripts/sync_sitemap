@@ -73,7 +73,7 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the pages 🤖")
     _ = parser.add_argument('-u', '--url', help='Page URL')
-    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=lambda s: s.lower() == 'true', default=True)
     _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
     _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
     _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')

@@ -12,7 +12,11 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var maxDepth int
+var (
+	maxDepth int
+	// settle is how long the crawled page count must hold steady before the sitemap is saved.
+	settle = time.Minute
+)
 
 func init() {
 	maxDepth, _ = strconv.Atoi(os.Getenv("SITEMAP_DEPTH"))
@@ -42,7 +46,8 @@ func Fetch(
 	prefix := "sitemap:" + strconv.Itoa(sitemapID) + ":"
 	keys := func() []string { return cache.GetPageKeys(prefix + "*") }
 
-	var lastCount int
+	// -1 so an empty first check (the root page still scraping) isn't mistaken for a settled crawl
+	lastCount := -1
 	var wait func()
 	wait = func() {
 
@@ -66,8 +71,8 @@ func Fetch(
 		}
 
 		lastCount = thisCount
-		time.AfterFunc(time.Minute, wait)
+		time.AfterFunc(settle, wait)
 	}
-	time.Sleep(time.Minute)
+	time.Sleep(settle)
 	wait()
 }
