@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
-	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/fs"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
@@ -32,9 +30,6 @@ func (j *Job) String() string {
 
 func (j *Job) Validate() bool {
 	if url.Domain(j.url) != j.domain {
-		return false
-	}
-	if cache.GetTime(j.String()).Add(j.frequency.Duration()).Before(time.Now()) {
 		return false
 	}
 	return true
@@ -70,7 +65,6 @@ func (j *Job) Success(out []byte) {
 	) + ".png"
 	_ = fs.Put(key, page.ScreenshotBytes())
 	UpsertPage(j.id, j.domain, j.url, page.Title, key, page.Meta)
-	cache.PutTime(j.String(), time.Now())
 
 	nextDepth := j.depth - 1
 	if nextDepth < 0 {
