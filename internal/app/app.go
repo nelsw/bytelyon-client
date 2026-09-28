@@ -68,6 +68,6 @@ func HandleBot(b bot.Model) {
 	case bot.SearchType:
 		search.Fetch(b.ChildID, b.Query, b.Headless)
 	case bot.SitemapType:
-		sitemap.Fetch(b.ChildID, b.ID, b.Query, b.Headless, b.Frequency)
+		sitemap.Fetch(b.ChildID, b.ID, b.Query, b.Headless)
 	}
 }

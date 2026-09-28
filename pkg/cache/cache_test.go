@@ -13,14 +13,14 @@ import (
 func TestPutGet(t *testing.T) {
 	m := testutil.Redis(t)
 
-	cache.Put("k", "v")
-	if got, err := cache.Get("k"); err != nil || got != "v" {
+	cache.Put(13, "k", "v")
+	if got, err := cache.Get(13, "k"); err != nil || got != "v" {
 		t.Errorf("Get() = %q, %v", got, err)
 	}
 	if ttl := m.TTL("k"); ttl != 6*time.Hour {
 		t.Errorf("TTL = %v, want 6h", ttl)
 	}
-	if _, err := cache.Get("missing"); !errors.Is(err, redis.Nil) {
+	if _, err := cache.Get(13, "missing"); !errors.Is(err, redis.Nil) {
 		t.Errorf("Get(missing) error = %v, want redis.Nil", err)
 	}
 }
@@ -30,8 +30,8 @@ func TestUnreachable(t *testing.T) {
 	cache.Close()
 	t.Cleanup(cache.Close)
 
-	cache.Put("k", "v") // logs the ping and set failures
-	if _, err := cache.Get("k"); err == nil {
+	cache.Put(13, "k", "v") // logs the ping and set failures
+	if _, err := cache.Get(13, "k"); err == nil {
 		t.Error("expected error from unreachable redis")
 	}
 }

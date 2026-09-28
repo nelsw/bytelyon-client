@@ -12,27 +12,29 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const channel = "bots"
-
 const (
-	pubSub = 10
-	pages  = 11
-	unk    = 15
+	channel = "bots"
+	pubSub  = 10
+	pageDB  = 11
+	linkDB  = 12
+	xAnyDB  = 13
 )
 
 var (
-	ctx     = context.Background()
-	clients = map[int]*redis.Client{
+	exp = time.Hour * 6
+	ctx = context.Background()
+	rcm = map[int]*redis.Client{
 		pubSub: nil,
-		pages:  nil,
-		unk:    nil,
+		pageDB: nil,
+		linkDB: nil,
+		xAnyDB: nil,
 	}
 )
 
 func init() {
-	for db, client := range clients {
+	for db, client := range rcm {
 		if client == nil {
-			clients[db] = connect(db)
+			rcm[db] = connect(db)
 		}
 	}
 }
@@ -56,7 +58,7 @@ func connect(db int) *redis.Client {
 
 // Subscribe calls fn with each message published to the bots channel until the client is closed.
 func Subscribe(fn func(payload string)) {
-	sub := clients[pubSub].Subscribe(ctx, channel)
+	sub := rcm[pubSub].Subscribe(ctx, channel)
 	defer func(sub *redis.PubSub) {
 		if err := sub.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
 			log.Err(err).Send()
@@ -75,32 +77,49 @@ func Subscribe(fn func(payload string)) {
 	}
 }
 
-func Put(key string, val any) {
-	if err := clients[unk].Set(ctx, key, val, 6*time.Hour).Err(); err != nil {
+func Put(db int, key string, val any) {
+	if err := rcm[db].Set(ctx, key, val, exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
-func Get(key string) (string, error) {
-	return clients[unk].Get(ctx, key).Result()
+func Get(db int, key string) (string, error) {
+	return rcm[db].Get(ctx, key).Result()
 }
 
-func PutTime(key string, val time.Time) {
-	if err := clients[pages].Set(ctx, key, val.UnixMilli(), 6*time.Hour).Err(); err != nil {
+func PutLink(key string, val any) {
+	rcm[linkDB].Set(ctx, key, val, exp)
+}
+
+func GetLink(key string) (string, error) {
+	return rcm[linkDB].Get(ctx, key).Result()
+}
+
+func PutPage(key string) {
+	if err := rcm[pageDB].Set(ctx, key, time.Now().UnixMilli(), exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
-func GetTime(key string) time.Time {
-	val, err := clients[pages].Get(ctx, key).Int64()
+func GetPage(key string) time.Time {
+	val, err := rcm[pageDB].Get(ctx, key).Int64()
 	if err != nil {
 		return time.Time{}
 	}
 	return time.UnixMilli(val)
 }
 
+func GetPageKeys(pattern string) []string {
+	vals, err := rcm[pageDB].Keys(ctx, pattern).Result()
+	if err != nil {
+		log.Err(err).Send()
+		return nil
+	}
+	return vals
+}
+
 func Close() {
-	for _, client := range clients {
+	for _, client := range rcm {
 		if client == nil {
 			continue
 		}

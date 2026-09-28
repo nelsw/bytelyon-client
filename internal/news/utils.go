@@ -27,7 +27,7 @@ func decodeBingLink(link string) string {
 
 func decodeGoogleLink(link string) (URL string) {
 
-	if str, err := cache.Get(link); err == nil {
+	if str, err := cache.GetLink(link); err == nil {
 		return str
 	}
 
@@ -103,7 +103,7 @@ func decodeGoogleLink(link string) (URL string) {
 		l.Warn().Msg("failed to decode gstatic node")
 	} else {
 		log.Trace().Str("url", URL).Msg("decoded gstatic url")
-		cache.Put(link, URL)
+		cache.PutLink(link, URL)
 	}
 	return
 }

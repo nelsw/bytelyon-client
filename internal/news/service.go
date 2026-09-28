@@ -63,7 +63,7 @@ func Fetch(
 				if ss.Add(a.URL) {
 					a.Source = string(s)
 					a.BotID = botID
-					go play.It(&Job{
+					play.Go(&Job{
 						headless,
 						a,
 					})

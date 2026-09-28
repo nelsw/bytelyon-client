@@ -7,5 +7,5 @@ func Fetch(
 	query string,
 	headless bool,
 ) {
-	play.It(&Job{searchID, headless, query})
+	play.Go(&Job{searchID, headless, query})
 }

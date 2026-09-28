@@ -68,6 +68,21 @@ func Close() {
 	wg.Wait()
 }
 
+func Go(p Playable) {
+	go func(v Playable) {
+		if closed || !v.Validate() {
+			return
+		}
+		if strings.Contains(v.Name(), "/sync_") {
+			queues[0].ch <- v
+		} else if strings.Contains(v.Name(), "/async_") {
+			queues[1].ch <- v
+		} else {
+			queues[2].ch <- v
+		}
+	}(p)
+}
+
 func It(p Playable) {
 	if closed || !p.Validate() {
 		return

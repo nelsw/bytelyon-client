@@ -9,6 +9,8 @@
 # ]
 # ///
 import argparse
+import base64
+import gzip
 import hashlib
 import json
 import random
@@ -140,8 +142,11 @@ def handle(
     page.locator('textarea[name="q"]').first.click()
     page.keyboard.type(query)
     page.keyboard.press('Enter')
-    page.wait_for_load_state('domcontentloaded', timeout=5_000)
-    page.wait_for_selector('#appbar')
+
+    try:
+        page.wait_for_selector('#botstuff')
+    except Error:
+        page.wait_for_load_state('domcontentloaded', timeout=5_000)
 
     screenshot = base64.b64encode(gzip.compress(page.screenshot(full_page=True))).decode('utf-8')
     content = base64.b64encode(gzip.compress(page.content().encode("utf-8"))).decode('utf-8')
@@ -284,7 +289,7 @@ def handle(
             "organic_products": organic_products,
             "similar_queries": similar_queries,
         }
-    }, indent=2))
+    }))
 
 
 def main(
@@ -294,9 +299,9 @@ def main(
 ) -> None:
 
     if proxy is not None:
-        browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
+        browser: Browser = launch(headless=headless, human_preset="careful", geoip=True, humanize=False, proxy=proxy)
     else:
-        browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
+        browser: Browser = launch(headless=headless, human_preset="careful", geoip=True, humanize=True)
     page = browser.new_page()
     try:
         handle(query, page)
@@ -310,7 +315,7 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the search 🤖")
     _ = parser.add_argument('-q', '--query', help='Search Query', type=str)
-    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool)
     _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
     _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
     _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')

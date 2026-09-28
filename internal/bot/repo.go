@@ -15,7 +15,6 @@ SELECT bots.id,
        bots.headless,
        bots.query,
        bots.last_run_at,
-       bots.frequency,
        COALESCE(CASE bots.type
                     WHEN 'search' THEN (SELECT serps.id
                                         FROM serps
