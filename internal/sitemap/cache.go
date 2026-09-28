@@ -32,7 +32,7 @@ func decr(botID, id int) {
 
 	prefix := jck + ":"
 	var urls []string
-	for _, k := range cache.Keys(jck) {
+	for _, k := range cache.Keys(prefix + "*") {
 		u, _ := strings.CutPrefix(k, prefix)
 		urls = append(urls, u)
 	}
@@ -45,7 +45,6 @@ func lastVisit(botID int, url string) time.Time {
 	return cache.GetTime(pageTimeKey(botID, url))
 }
 
-func saveVisit(botID int, id int, url string) {
+func saveVisit(botID int, url string) {
 	cache.SetTime(pageTimeKey(botID, url), time.Now())
-	decr(botID, id)
 }

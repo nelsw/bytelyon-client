@@ -28,6 +28,9 @@ var (
 )
 
 func connStr() string {
+	if s := os.Getenv("POSTGRES_URL"); s != "" {
+		return s
+	}
 	u, p := "root", "secret"
 	if os.Getenv("APP_ENV") == "prod" {
 		u, p = os.Getenv("DB_USER"), os.Getenv("DB_PASS")

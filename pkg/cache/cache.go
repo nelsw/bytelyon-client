@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -38,7 +39,7 @@ func connect(db int) *redis.Client {
 	}
 
 	opt := redis.Options{
-		Addr:         "127.0.0.1:6379",
+		Addr:         cmp.Or(os.Getenv("REDIS_ADDR"), "127.0.0.1:6379"),
 		DB:           db,
 		ReadTimeout:  -1,
 		WriteTimeout: -1,

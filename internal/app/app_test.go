@@ -33,11 +33,13 @@ func TestHandleBots(t *testing.T) {
 
 	HandleBots([]bot.Model{
 		{},
-		{ID: 1, Type: bot.NewsType, Query: "golang"},
+		{ID: 1, Type: bot.NewsType, Query: "golang"},               // no articles, so no jobs
 		{ID: 2, Type: bot.SearchType, ChildID: 5, Query: "golang"}, // no script installed, so the search fails fast
 		{ID: 3, Type: bot.SitemapType, Query: "example.com"},       // no child sitemap
 	})
 
+	// bots are marked as run when their last job finishes, so only the search bot is
+	testutil.Eventually(t, "bot update", func() bool { return len(p.Execs()) > 0 })
 	var ids []any
 	for _, c := range p.Execs() {
 		if !strings.Contains(c.SQL, "UPDATE bots") {
@@ -45,8 +47,8 @@ func TestHandleBots(t *testing.T) {
 		}
 		ids = append(ids, c.Args["id"])
 	}
-	if len(ids) != 3 || ids[0] != 1 || ids[1] != 2 || ids[2] != 3 {
-		t.Errorf("updated bots = %v, want [1 2 3]", ids)
+	if len(ids) != 1 || ids[0] != 2 {
+		t.Errorf("updated bots = %v, want [2]", ids)
 	}
 	if n := working.Load(); n != 0 {
 		t.Errorf("working = %d after handling, want 0", n)
@@ -55,7 +57,7 @@ func TestHandleBots(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	p := setup(t)
-	cache.Put(13, "k", "v") // opens the redis client
+	cache.SetStr("k", "v") // opens the redis client
 
 	working.Add(1)
 	go func() {

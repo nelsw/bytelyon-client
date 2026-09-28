@@ -39,6 +39,12 @@ func TestMarshalZerologObject(t *testing.T) {
 	}
 }
 
+func TestTypeString(t *testing.T) {
+	if typ := SearchType; typ.String() != "search" {
+		t.Errorf("String() = %q", typ.String())
+	}
+}
+
 func TestTypeScan(t *testing.T) {
 	for _, v := range []any{"news", "search", "sitemap"} {
 		var typ Type

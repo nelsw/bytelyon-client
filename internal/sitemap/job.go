@@ -36,7 +36,7 @@ func (j *Job) Validate() bool {
 
 	ok := url.Secure(j.url) &&
 		url.Domain(j.url) == j.domain &&
-		lastVisit(j.id, j.url).Before(j.start)
+		lastVisit(j.botID, j.url).Before(j.start)
 
 	if ok {
 		incr(j.botID)
@@ -68,13 +68,15 @@ func (j *Job) Success(out []byte) {
 		j.Failure(err)
 		return
 	}
+	// deferred until the links are queued (and counted), so the count can't hit zero while the crawl continues
+	defer decr(j.botID, j.id)
 
 	key := fmt.Sprintf("%s/%d/%s.png", bot.SitemapType, j.id, url.UUID(j.url))
 	_ = fs.Put(key, page.ScreenshotBytes())
 	UpsertPage(j.id, j.domain, j.url, page.Title, key, page.Meta)
 
 	log.Info().EmbedObject(j).Msg(emo.Truthy)
-	saveVisit(j.botID, j.id, j.url)
+	saveVisit(j.botID, j.url)
 
 	if j.depth-1 < 0 {
 		return

@@ -18,31 +18,40 @@ type Playable interface {
 	Validate() bool
 }
 
+// command builds the command that runs p; tests replace it.
+var command = func(p Playable) *exec.Cmd { return exec.Command(p.Name(), p.Args()...) }
+
 type queue struct {
 	ch chan Playable
 	wg *sync.WaitGroup
 }
 
 var (
-	closed    bool
-	closeOnce sync.Once
-	queues    []*queue
+	mu      sync.Mutex
+	closed  bool
+	pending sync.WaitGroup // jobs accepted by Go or It but not yet queued
+	queues  []*queue
 )
 
 func init() {
+	start()
+}
+
+// start launches the worker pools for each queue.
+func start() {
 
 	ƒ := func(size int) *queue {
 		ch := make(chan Playable)
 		var wg sync.WaitGroup
 		for range size {
 			wg.Go(func() {
+				// jobs are validated once, before they're queued, since Validate may count them.
+				// results are handled inline so Close waits for them to be saved.
 				for p := range ch {
-					if p.Validate() {
-						if out, err := exec.Command(p.Name(), p.Args()...).Output(); err != nil {
-							go p.Failure(err)
-						} else {
-							go p.Success(out)
-						}
+					if out, err := command(p).Output(); err != nil {
+						p.Failure(err)
+					} else {
+						p.Success(out)
 					}
 				}
 			})
@@ -57,45 +66,71 @@ func init() {
 	}
 }
 
-// Close stops accepting work and waits for queued jobs to finish; calls after the first are no-ops.
+// Close stops accepting work and waits for accepted jobs to finish; calls after the first are no-ops.
 func Close() {
-	closeOnce.Do(func() {
-		closed = true
-		var wg sync.WaitGroup
-		for _, q := range queues {
-			wg.Go(func() {
-				close(q.ch)
-				q.wg.Wait()
-			})
-		}
-		wg.Wait()
-	})
-}
-
-func Go(p Playable) {
-	go func(v Playable) {
-		if closed || !v.Validate() {
-			return
-		}
-		if strings.Contains(v.Name(), "/sync_") {
-			queues[0].ch <- v
-		} else if strings.Contains(v.Name(), "/async_") {
-			queues[1].ch <- v
-		} else {
-			queues[2].ch <- v
-		}
-	}(p)
-}
-
-func It(p Playable) {
-	if closed || !p.Validate() {
+	mu.Lock()
+	if closed {
+		mu.Unlock()
 		return
 	}
+	closed = true
+	mu.Unlock()
+
+	pending.Wait()
+	var wg sync.WaitGroup
+	for _, q := range queues {
+		wg.Go(func() {
+			close(q.ch)
+			q.wg.Wait()
+		})
+	}
+	wg.Wait()
+}
+
+// accept reports whether new work may be queued, registering it as pending if so.
+func accept() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if closed {
+		return false
+	}
+	pending.Add(1)
+	return true
+}
+
+func enqueue(p Playable) {
+	defer pending.Done()
 	if strings.Contains(p.Name(), "/sync_") {
 		queues[0].ch <- p
 	} else if strings.Contains(p.Name(), "/async_") {
 		queues[1].ch <- p
 	} else {
 		queues[2].ch <- p
+	}
+}
+
+// valid reports whether p should be queued, registering it as pending if so. Validate runs synchronously
+// because it may count the job, and callers rely on that count being current once Go returns.
+func valid(p Playable) bool {
+	if !accept() {
+		return false
+	} else if !p.Validate() {
+		pending.Done()
+		return false
+	}
+	return true
+}
+
+// Go queues p in the background; it's dropped if invalid or if Close has been called.
+func Go(p Playable) {
+	if valid(p) {
+		go enqueue(p)
+	}
+}
+
+// It queues p, blocking until a worker picks it up; it's dropped if invalid or if Close has been called.
+func It(p Playable) {
+	if valid(p) {
+		enqueue(p)
 	}
 }

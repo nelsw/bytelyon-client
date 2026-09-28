@@ -86,8 +86,6 @@ WHERE id = @id;
 `
 	if err := db.Exec(sql, pgx.StrictNamedArgs{"id": id}); err != nil {
 		log.Warn().Err(err).Msg("failed to update bot")
-	} else {
-		//log.Info().EmbedObject().Msg(emo.Bot)
 	}
 }
 

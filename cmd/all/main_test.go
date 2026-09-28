@@ -36,8 +36,8 @@ func TestRun(t *testing.T) {
 	testutil.Redis(t)
 	testutil.Workdir(t)
 	p.Rows = testutil.NewRows([]string{"id", "type", "blacklist", "headless", "query", "last_run_at", "child_id"},
-		[]any{1, "sitemap", nil, true, "a.com", nil, 0},
-		[]any{2, "sitemap", nil, true, "b.com", nil, 0},
+		[]any{1, "search", nil, true, "a", nil, 5}, // no script installed, so the searches fail fast
+		[]any{2, "search", nil, true, "b", nil, 6},
 	)
 
 	done := make(chan struct{})

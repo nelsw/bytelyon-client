@@ -9,11 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var (
-	maxDepth int
-	// settle is how long the crawled page count must hold steady before the sitemap is saved.
-	settle = time.Minute
-)
+var maxDepth int
 
 func init() {
 	maxDepth, _ = strconv.Atoi(os.Getenv("SITEMAP_DEPTH"))

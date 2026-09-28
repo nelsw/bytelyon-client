@@ -122,8 +122,8 @@ func TestPool(t *testing.T) {
 
 func TestRedis(t *testing.T) {
 	m := Redis(t)
-	cache.Put(13, "k", "v")
-	if v, _ := m.DB(13).Get("k"); v != "v" {
+	cache.SetStr("k", "v")
+	if v, _ := m.DB(11).Get("k"); v != "v" {
 		t.Errorf("value = %q", v)
 	}
 }

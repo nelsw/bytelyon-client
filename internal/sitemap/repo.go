@@ -78,7 +78,5 @@ WHERE id = @id
 
 	if err := db.Exec(sql, d); err != nil {
 		log.Err(err).Msgf("failed to save sitemap: %d", id)
-	} else {
-
 	}
 }

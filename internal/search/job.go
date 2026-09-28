@@ -35,7 +35,7 @@ func (j *Job) Success(bytes []byte) {
 
 	var p model.Page
 	if err := json.Unmarshal(bytes, &p); err != nil {
-		log.Err(err).Msg("failed to unmarshal page")
+		j.Failure(err)
 		return
 	}
 
@@ -47,10 +47,12 @@ func (j *Job) Success(bytes []byte) {
 	UpdateSearch(j.searchID, imgKey, srcKey, p.Data)
 
 	cache.Publish(j.botID, fmt.Sprintf("%s Search result ready!", j.query))
+	bot.Update(j.botID)
 }
 
 func (j *Job) Failure(err error) {
 	log.Err(err).Msg("failed to scrape page")
+	bot.Update(j.botID)
 }
 
 func (j *Job) Validate() bool {

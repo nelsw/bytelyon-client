@@ -1,60 +1,44 @@
 package model
 
 import (
-	"slices"
-	"sync"
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"testing"
 )
 
-func TestData(t *testing.T) {
-	d := Data[string, any]{}
-	if !d.Empty() || d.Len() != 0 {
-		t.Fatal("new data should be empty")
+// encode gzips and base64 encodes s, as the scripts do.
+func encode(t *testing.T, s string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write([]byte(s)); err != nil {
+		t.Fatal(err)
 	}
-	if d.Get("missing") != nil || d.Has("missing") {
-		t.Error("missing key should be absent with zero value")
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
 	}
-
-	d.Put("a", 1)
-	d.Put("b", "two")
-	if d.Empty() || d.Len() != 2 || !d.Has("a") || d.Get("b") != "two" {
-		t.Errorf("unexpected data after puts: %v", d)
-	}
-
-	if got, want := d.String(), "{\n  \"a\": 1,\n  \"b\": \"two\"\n}"; got != want {
-		t.Errorf("String() = %q, want %q", got, want)
-	}
-
-	d.Del("a")
-	if d.Has("a") || d.Len() != 1 {
-		t.Errorf("Del did not remove key: %v", d)
-	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
-func TestSyncSet(t *testing.T) {
-	s := NewSyncSet[int]()
-
-	var wg sync.WaitGroup
-	for i := range 100 {
-		wg.Go(func() { s.Add(i % 10) })
+func TestPageBytes(t *testing.T) {
+	p := Page{Screenshot: encode(t, "png"), Content: encode(t, "<html>")}
+	if got := string(p.ScreenshotBytes()); got != "png" {
+		t.Errorf("ScreenshotBytes() = %q", got)
 	}
-	wg.Wait()
-
-	if s.Add(3) {
-		t.Error("Add should return false for an existing key")
-	}
-	s.AddAll([]int{10, 11, 3})
-
-	want := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
-	if got := s.Keys(); !slices.Equal(got, want) {
-		t.Errorf("Keys() = %v, want %v", got, want)
-	}
-	if !s.Has(11) || s.Has(12) {
-		t.Error("Has returned the wrong result")
+	if got := string(p.ContentBytes()); got != "<html>" {
+		t.Errorf("ContentBytes() = %q", got)
 	}
 
-	v, err := s.Value()
-	if err != nil || !slices.Equal(v.([]int), want) {
-		t.Errorf("Value() = %v, %v", v, err)
+	full := encode(t, "truncated")
+	raw, _ := base64.StdEncoding.DecodeString(full)
+	for name, s := range map[string]string{
+		"invalid base64": "%%%",
+		"not gzip":       base64.StdEncoding.EncodeToString([]byte("plain")),
+		"truncated gzip": base64.StdEncoding.EncodeToString(raw[:len(raw)-4]),
+	} {
+		if got := (&Page{Content: s}).ContentBytes(); got != nil {
+			t.Errorf("%s: ContentBytes() = %q, want nil", name, got)
+		}
 	}
 }
