@@ -12,6 +12,7 @@ import (
 	"github.com/nelsw/bytelyon-client/internal/sitemap"
 	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/db"
+	"github.com/nelsw/bytelyon-client/pkg/emo"
 	"github.com/nelsw/bytelyon-client/pkg/logs"
 	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/nelsw/bytelyon-client/pkg/ssh"
@@ -56,18 +57,14 @@ func HandleBot(b bot.Model) {
 		return
 	}
 
-	log.Info().EmbedObject(&b).Msg("⏳")
-	defer func() {
-		bot.Update(b)
-		log.Info().EmbedObject(&b).Msg("✅")
-	}()
+	log.Info().EmbedObject(&b).Msg(emo.Bot)
 
 	switch b.Type {
 	case bot.NewsType:
 		news.Fetch(b.ID, b.Query, b.Headless, b.LastRun(), b.Blacklist)
 	case bot.SearchType:
-		search.Fetch(b.ChildID, b.Query, b.Headless)
+		search.Fetch(b.ID, b.ChildID, b.Query, b.Headless)
 	case bot.SitemapType:
-		sitemap.Fetch(b.ChildID, b.ID, b.Query, b.Headless)
+		sitemap.Fetch(b.ID, b.ChildID, b.Query, b.Headless)
 	}
 }

@@ -3,7 +3,6 @@ package sitemap
 import (
 	"github.com/jackc/pgx/v5"
 	"github.com/nelsw/bytelyon-client/pkg/db"
-	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog/log"
 )
 
@@ -46,7 +45,7 @@ DO UPDATE SET title = excluded.title,
 	if meta == nil {
 		meta = map[string]any{}
 	}
-	d := model.Data[string, any]{
+	d := map[string]any{
 		"domain":         domain,
 		"meta":           meta,
 		"pageable_id":    pid,
@@ -60,11 +59,10 @@ DO UPDATE SET title = excluded.title,
 		log.Err(err).Msgf("failed to save page: %s", d)
 	} else {
 		log.Trace().Msgf("saved page: %s", d)
-		UpdateSitemap(pid)
 	}
 }
 
-func UpdateSitemap(id int, urls ...string) {
+func UpdateSitemap(id int, urls []string) {
 	d := pgx.StrictNamedArgs{"id": id}
 	sql := ` UPDATE sitemaps SET updated_at = NOW() WHERE id = @id`
 
@@ -80,5 +78,7 @@ WHERE id = @id
 
 	if err := db.Exec(sql, d); err != nil {
 		log.Err(err).Msgf("failed to save sitemap: %d", id)
+	} else {
+
 	}
 }

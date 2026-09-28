@@ -8,7 +8,6 @@ import (
 
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/pkg/http"
-	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/rs/zerolog/log"
 )
@@ -29,7 +28,7 @@ func Fetch(
 	blacklist bot.Blacklist,
 ) {
 
-	ss := model.NewSyncSet[string]()
+	remove(botID)
 
 	ƒ := func(s Source) {
 
@@ -60,14 +59,8 @@ func Fetch(
 					a.Publisher = a.Source
 				}
 
-				if ss.Add(a.URL) {
-					a.Source = string(s)
-					a.BotID = botID
-					play.Go(&Job{
-						headless,
-						a,
-					})
-				}
+				a.Source, a.BotID = string(s), botID
+				play.Go(&Job{headless, a})
 			})
 		}
 		wg.Wait()

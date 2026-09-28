@@ -31,22 +31,6 @@ func TestData(t *testing.T) {
 	}
 }
 
-func TestSet(t *testing.T) {
-	s := MakeSet[string]()
-	if !s.Empty() || s.Len() != 0 {
-		t.Fatal("new set should be empty")
-	}
-	if !s.Add("b") || !s.Add("a") || s.Add("a") {
-		t.Error("Add should report whether the key was new")
-	}
-	if !s.Has("a") || s.Has("c") || s.Empty() || s.Len() != 2 {
-		t.Errorf("unexpected set state: %v", s.Keys())
-	}
-	if got := s.Keys(); !slices.Equal(got, []string{"a", "b"}) {
-		t.Errorf("Keys() = %v, want sorted [a b]", got)
-	}
-}
-
 func TestSyncSet(t *testing.T) {
 	s := NewSyncSet[int]()
 

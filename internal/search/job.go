@@ -2,16 +2,20 @@ package search
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strconv"
 
+	"github.com/nelsw/bytelyon-client/internal/bot"
+	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/fs"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog/log"
 )
 
 type Job struct {
-	id       int
+	botID    int
+	searchID int
 	headless bool
 	query    string
 }
@@ -35,16 +39,14 @@ func (j *Job) Success(bytes []byte) {
 		return
 	}
 
-	key := filepath.Join("search", strconv.Itoa(j.id), j.query)
-	_ = fs.Put(key+".png", p.ScreenshotBytes())
-	_ = fs.Put(key+".html", p.ContentBytes())
+	key := filepath.Join(string(bot.SearchType), strconv.Itoa(j.searchID), j.query)
+	imgKey, srcKey := key+".png", key+".html"
+	_ = fs.Put(imgKey, p.ScreenshotBytes())
+	_ = fs.Put(srcKey, p.ContentBytes())
 
-	UpdateSearch(j.id, key+".png", key+".html", p.Data)
+	UpdateSearch(j.searchID, imgKey, srcKey, p.Data)
 
-	log.Info().
-		Int("id", j.id).
-		Str("query", j.query).
-		Msgf("✅ %s", bytes)
+	cache.Publish(j.botID, fmt.Sprintf("%s Search result ready!", j.query))
 }
 
 func (j *Job) Failure(err error) {

@@ -16,7 +16,7 @@ func TestFetch(t *testing.T) {
 	testutil.Script(t, "sync_search", 0)
 	testutil.Output(t, `"golang"`, `{"data":{"results":[1,2]}}`)
 
-	Fetch(4, "golang", true)
+	Fetch(1, 4, "golang", true)
 
 	testutil.Eventually(t, "search update", func() bool { return len(p.Execs()) == 1 })
 	if got, want := testutil.Args(t, "sync_search"), `-m true -q "golang"`; got != want {
@@ -41,7 +41,7 @@ func TestFetchScriptFailure(t *testing.T) {
 	testutil.Workdir(t)
 	testutil.Script(t, "sync_search", 1)
 
-	Fetch(4, "golang", true)
+	Fetch(1, 4, "golang", true)
 
 	testutil.Eventually(t, "script run", func() bool { _, err := os.Stat("sync_search.args"); return err == nil })
 	time.Sleep(50 * time.Millisecond)

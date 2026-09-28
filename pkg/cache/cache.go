@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -14,11 +15,10 @@ import (
 )
 
 const (
-	channel = "bots"
-	pubSub  = 10
-	pageDB  = 11
-	linkDB  = 12
-	xAnyDB  = 13
+	subCh  = "bots"
+	pubCh  = "evts"
+	pubSub = 10
+	store  = 11
 )
 
 var (
@@ -37,14 +37,18 @@ func connect(db int) *redis.Client {
 		return client
 	}
 
-	client := redis.NewClient(&redis.Options{
-		Addr:         os.Getenv("REDIS_ADDR"),
+	opt := redis.Options{
+		Addr:         "127.0.0.1:6379",
 		DB:           db,
 		ReadTimeout:  -1,
 		WriteTimeout: -1,
-		Dialer:       ssh.DialFunc(),
-	})
+	}
 
+	if os.Getenv("APP_ENV") == "prod" {
+		opt.Dialer = ssh.DialFunc()
+	}
+
+	client := redis.NewClient(&opt)
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Err(err).Str("addr", client.Options().Addr).Msg("redis ping failed")
 	}
@@ -54,7 +58,7 @@ func connect(db int) *redis.Client {
 
 // Subscribe calls fn with each message published to the bots channel until the client is closed.
 func Subscribe(fn func(payload string)) {
-	sub := connect(pubSub).Subscribe(ctx, channel)
+	sub := connect(pubSub).Subscribe(ctx, subCh)
 	defer func(sub *redis.PubSub) {
 		if err := sub.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
 			log.Err(err).Send()
@@ -73,45 +77,55 @@ func Subscribe(fn func(payload string)) {
 	}
 }
 
+func Publish(botID int, message string) {
+	connect(pubSub).Publish(ctx, pubCh, fmt.Sprintf(`{"id": %d, "message": "%s"}`, botID, message))
+}
+
 func Put(db int, key string, val any) {
 	if err := connect(db).Set(ctx, key, val, exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
-func Get(db int, key string) (string, error) {
-	return connect(db).Get(ctx, key).Result()
+func SetStr(key string, val any) {
+	connect(store).Set(ctx, key, val, exp)
 }
 
-func PutLink(key string, val any) {
-	connect(linkDB).Set(ctx, key, val, exp)
+func GetStr(key string) (string, error) {
+	return connect(store).Get(ctx, key).Result()
 }
 
-func GetLink(key string) (string, error) {
-	return connect(linkDB).Get(ctx, key).Result()
+func SetTime(key string, t time.Time) {
+	connect(store).Set(ctx, key, t.UnixMilli(), exp)
 }
 
-func PutPage(key string) {
-	if err := connect(pageDB).Set(ctx, key, time.Now().UnixMilli(), exp).Err(); err != nil {
-		log.Err(err).Send()
-	}
-}
-
-func GetPage(key string) time.Time {
-	val, err := connect(pageDB).Get(ctx, key).Int64()
+func GetTime(key string) time.Time {
+	val, err := connect(store).Get(ctx, key).Int64()
 	if err != nil {
 		return time.Time{}
 	}
 	return time.UnixMilli(val)
 }
 
-func GetPageKeys(pattern string) []string {
-	vals, err := connect(pageDB).Keys(ctx, pattern).Result()
+func Keys(pattern string) []string {
+	vals, err := connect(store).Keys(ctx, pattern).Result()
 	if err != nil {
 		log.Err(err).Send()
 		return nil
 	}
 	return vals
+}
+
+func Del(key string) error {
+	return connect(store).Del(ctx, key).Err()
+}
+
+func Decr(key string) (int64, error) {
+	return connect(store).Decr(ctx, key).Result()
+}
+
+func Incr(key string) error {
+	return connect(store).Incr(ctx, key).Err()
 }
 
 func Close() {

@@ -1,9 +1,16 @@
 package url
 
 import (
+	"fmt"
 	"maps"
 	"testing"
+
+	"github.com/nelsw/bytelyon-client/internal/bot"
 )
+
+func TestFoo(t *testing.T) {
+	fmt.Println(fmt.Sprintf("%s", bot.SearchType))
+}
 
 func TestValuesEncode(t *testing.T) {
 	v := Values{"b": {"2"}, "a": {"1 &"}}

@@ -2,9 +2,9 @@ package news
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 
+	"github.com/nelsw/bytelyon-client/pkg/emo"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog/log"
 )
@@ -24,7 +24,7 @@ func (j *Job) Args() []string {
 func (j *Job) Success(bytes []byte) {
 	var page model.Page
 	if err := json.Unmarshal(bytes, &page); err != nil {
-		log.Err(err).Stringer("job", j).Msg("failed to unmarshal news page")
+		j.Failure(err)
 		return
 	}
 
@@ -37,10 +37,8 @@ func (j *Job) Success(bytes []byte) {
 	}
 
 	UpsertArticle(j.article)
-}
-
-func (j *Job) String() string {
-	return fmt.Sprintf("news::%d::%s", j.article.BotID, j.article.URL)
+	log.Info().EmbedObject(j.article).Msg(emo.Truthy)
+	decr(j.article.BotID)
 }
 
 func (j *Job) Name() string {
@@ -48,9 +46,11 @@ func (j *Job) Name() string {
 }
 
 func (j *Job) Failure(err error) {
-	log.Err(err).Stringer("job", j).Msg("failed")
+	log.Err(err).EmbedObject(j.article).Msg(emo.Falsey)
+	decr(j.article.BotID)
 }
 
 func (j *Job) Validate() bool {
+	incr(j.article.BotID)
 	return true
 }

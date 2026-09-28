@@ -2,12 +2,9 @@ package sitemap
 
 import (
 	"os"
-	"slices"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/rs/zerolog/log"
 )
@@ -23,8 +20,8 @@ func init() {
 }
 
 func Fetch(
-	sitemapID int,
 	botID int,
+	sitemapID int,
 	domain string,
 	headless bool,
 ) {
@@ -34,7 +31,10 @@ func Fetch(
 		return
 	}
 
+	remove(botID)
+
 	play.Go(&Job{
+		botID,
 		sitemapID,
 		headless,
 		domain,
@@ -42,37 +42,4 @@ func Fetch(
 		maxDepth,
 		time.Now().Add(time.Second * -1),
 	})
-
-	prefix := "sitemap:" + strconv.Itoa(sitemapID) + ":"
-	keys := func() []string { return cache.GetPageKeys(prefix + "*") }
-
-	// -1 so an empty first check (the root page still scraping) isn't mistaken for a settled crawl
-	lastCount := -1
-	var wait func()
-	wait = func() {
-
-		newKeys := keys()
-		thisCount := len(newKeys)
-
-		log.Trace().
-			Int("sitemap", sitemapID).
-			Int("lastCount", lastCount).
-			Int("thisCount", thisCount).
-			Send()
-
-		if lastCount == thisCount {
-			var arr []string
-			for _, key := range newKeys {
-				arr = append(arr, strings.ReplaceAll(key, prefix, ""))
-			}
-			slices.Sort(arr)
-			UpdateSitemap(sitemapID, arr...)
-			return
-		}
-
-		lastCount = thisCount
-		time.AfterFunc(settle, wait)
-	}
-	time.Sleep(settle)
-	wait()
 }

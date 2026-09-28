@@ -3,14 +3,11 @@ package sitemap
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
-	"github.com/nelsw/bytelyon-client/pkg/cache"
+	"github.com/nelsw/bytelyon-client/pkg/emo"
 	"github.com/nelsw/bytelyon-client/pkg/fs"
 	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/nelsw/bytelyon-client/pkg/play"
@@ -20,24 +17,13 @@ import (
 )
 
 type Job struct {
+	botID    int
 	id       int
 	headless bool
 	domain   string
 	url      string
 	depth    int
 	start    time.Time
-}
-
-func (j *Job) s3(ext string) string {
-	return filepath.Join(
-		string(bot.SitemapType),
-		strconv.Itoa(j.id),
-		uuid.NewSHA1(uuid.NameSpaceURL, []byte(j.url)).String(),
-	) + "." + ext
-}
-
-func (j *Job) db() string {
-	return fmt.Sprintf("sitemap:%d:%s", j.id, j.url)
 }
 
 func (j *Job) MarshalZerologObject(evt *zerolog.Event) {
@@ -47,16 +33,16 @@ func (j *Job) MarshalZerologObject(evt *zerolog.Event) {
 }
 
 func (j *Job) Validate() bool {
-	if !strings.HasPrefix(j.url, "https://") {
-		return false
+
+	ok := url.Secure(j.url) &&
+		url.Domain(j.url) == j.domain &&
+		lastVisit(j.id, j.url).Before(j.start)
+
+	if ok {
+		incr(j.botID)
 	}
-	if url.Domain(j.url) != j.domain {
-		return false
-	}
-	if cache.GetPage(j.db()).After(j.start) {
-		return false
-	}
-	return true
+
+	return ok
 }
 
 func (j *Job) Name() string {
@@ -72,22 +58,23 @@ func (j *Job) Args() []string {
 
 func (j *Job) Failure(err error) {
 	log.Err(err).EmbedObject(j).Send()
+	decr(j.botID, j.id)
 }
 
 func (j *Job) Success(out []byte) {
 
 	var page model.Page
 	if err := json.Unmarshal(out, &page); err != nil {
-		log.Err(err).EmbedObject(j).Msg("failed to unmarshal sitemap page")
+		j.Failure(err)
 		return
 	}
 
-	key := j.s3("png")
+	key := fmt.Sprintf("%s/%d/%s.png", bot.SitemapType, j.id, url.UUID(j.url))
 	_ = fs.Put(key, page.ScreenshotBytes())
 	UpsertPage(j.id, j.domain, j.url, page.Title, key, page.Meta)
-	cache.PutPage(j.db())
 
-	log.Debug().EmbedObject(j).Msg(`✅`)
+	log.Info().EmbedObject(j).Msg(emo.Truthy)
+	saveVisit(j.botID, j.id, j.url)
 
 	if j.depth-1 < 0 {
 		return
@@ -95,6 +82,7 @@ func (j *Job) Success(out []byte) {
 
 	for _, link := range page.Links {
 		play.Go(&Job{
+			j.botID,
 			j.id,
 			j.headless,
 			j.domain,
