@@ -111,15 +111,23 @@ func Fetch(
 
 			// only override what the rss feed gave us when the scraped page has something better
 			set := func(dst *string, key string) {
-				if s, _ := d.Get(key).(string); s != "" {
-					*dst = s
+				if str, _ := d.Get(key).(string); str != "" {
+					*dst = str
 				}
 			}
 			set(&a.Body, "body")
 			set(&a.Source, "source")
 			set(&a.Title, "title")
 			set(&a.Publisher, "publisher")
-			if a.Desc != "" {
+			set(&a.ImgAlt, "img_alt")
+			set(&a.ImgURL, "img_src")
+			if ks, ok := d.Get("keywords").([]any); ok {
+				for _, k := range ks {
+					a.Keywords = append(a.Keywords, k.(string))
+				}
+			}
+
+			if a.IsGoogleNews() {
 				set(&a.Desc, "description")
 			}
 
