@@ -67,28 +67,3 @@ func Put(key string, data []byte) (err error) {
 
 	return
 }
-
-func Move(from, to string) (err error) {
-
-	var data []byte
-
-	defer func() {
-		if err == nil {
-			return
-		}
-		log.Err(err).
-			Str("ƒ", "move").
-			Str("from", from).
-			Str("to", to).
-			Int("body", len(data)).
-			Send()
-	}()
-
-	if data, err = os.ReadFile(from); err != nil {
-		return
-	} else if err = Put(to, data); err != nil {
-		return
-	}
-	err = os.Remove(from)
-	return
-}
