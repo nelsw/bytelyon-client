@@ -1,64 +1,82 @@
 package play
 
 import (
-	"encoding/json"
-	"os"
 	"os/exec"
-	"strconv"
 	"strings"
-
-	"github.com/nelsw/bytelyon-client/internal/bot"
-	"github.com/nelsw/bytelyon-client/pkg/fs"
-	"github.com/nelsw/bytelyon-client/pkg/model"
-	"github.com/rs/zerolog/log"
+	"sync"
 )
 
-func run(name string, args []string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+type Playable interface {
+	Name() string
+
+	Args() []string
+
+	Success([]byte)
+
+	Failure(error)
+
+	Validate() bool
 }
 
-func Pages(t bot.Type, id int, headless bool, urls []string) error {
-	return run("./scripts/pages", append([]string{
-		"-t", string(t),
-		"-i", strconv.Itoa(id),
-		"-m", strconv.FormatBool(headless),
-		"-u",
-	}, urls...))
+type queue struct {
+	ch chan Playable
+	wg *sync.WaitGroup
 }
 
-func Search(id int, query string, headless bool) error {
-	return run("./scripts/sync_search", []string{
-		"-i", strconv.Itoa(id),
-		"-q", query,
-		"-m", strconv.FormatBool(headless),
-	})
-}
+var (
+	closed bool
+	queues []*queue
+)
 
-func HandleFiles(path string) (srcKey string, imgKey string, data model.Data[string, any]) {
+func init() {
 
-	data = model.Data[string, any]{}
-
-	from := path + ".html"
-	srcKey = strings.ReplaceAll(from, ".storage/", "")
-	_ = fs.Move(from, srcKey)
-	log.Trace().Msg("moved html file")
-
-	from = path + ".png"
-	imgKey = strings.ReplaceAll(from, ".storage/", "")
-	_ = fs.Move(from, imgKey)
-	log.Trace().Msg("moved image file")
-
-	from = path + ".json"
-	if bytes, err := os.ReadFile(from); err != nil {
-		log.Warn().Err(err).Msg("failed to read file")
-	} else if err = json.Unmarshal(bytes, &data); err != nil {
-		log.Warn().Err(err).Msg("failed to unmarshal file")
-	} else {
-		log.Trace().Msg("unmarshaled data")
-		_ = os.Remove(from)
+	ƒ := func(size int) *queue {
+		ch := make(chan Playable)
+		var wg sync.WaitGroup
+		for range size {
+			wg.Go(func() {
+				for p := range ch {
+					if p.Validate() {
+						if out, err := exec.Command(p.Name(), p.Args()...).Output(); err != nil {
+							go p.Failure(err)
+						} else {
+							go p.Success(out)
+						}
+					}
+				}
+			})
+		}
+		return &queue{ch, &wg}
 	}
-	return
+
+	queues = []*queue{
+		ƒ(5),
+		ƒ(20),
+		ƒ(50),
+	}
+}
+
+func Close() {
+	closed = true
+	var wg sync.WaitGroup
+	for _, q := range queues {
+		wg.Go(func() {
+			close(q.ch)
+			q.wg.Wait()
+		})
+	}
+	wg.Wait()
+}
+
+func It(p Playable) {
+	if closed || !p.Validate() {
+		return
+	}
+	if strings.Contains(p.Name(), "/sync_") {
+		queues[0].ch <- p
+	} else if strings.Contains(p.Name(), "/async_") {
+		queues[1].ch <- p
+	} else {
+		queues[2].ch <- p
+	}
 }

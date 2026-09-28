@@ -27,6 +27,8 @@ type Model struct {
 	Query string `db:"query"`
 
 	LastRunAt *time.Time `db:"last_run_at"`
+
+	Frequency model.Frequency `db:"frequency"`
 }
 
 func (m *Model) LastRun() time.Time {

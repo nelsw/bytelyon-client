@@ -13,6 +13,7 @@ import (
 	"github.com/nelsw/bytelyon-client/pkg/cache"
 	"github.com/nelsw/bytelyon-client/pkg/db"
 	"github.com/nelsw/bytelyon-client/pkg/logs"
+	"github.com/nelsw/bytelyon-client/pkg/play"
 	"github.com/nelsw/bytelyon-client/pkg/ssh"
 	"github.com/rs/zerolog/log"
 )
@@ -29,6 +30,7 @@ func Close() {
 	for working.Load() > 0 {
 		time.Sleep(time.Second)
 	}
+	play.Close()
 	cache.Close()
 	db.Close()
 	ssh.Close()
@@ -66,6 +68,6 @@ func HandleBot(b bot.Model) {
 	case bot.SearchType:
 		search.Fetch(b.ChildID, b.Query, b.Headless)
 	case bot.SitemapType:
-		sitemap.Fetch(b.ChildID, b.ID, b.Query, b.Headless)
+		sitemap.Fetch(b.ChildID, b.ID, b.Query, b.Headless, b.Frequency)
 	}
 }

@@ -253,7 +253,7 @@ func TestUpsertArticleError(t *testing.T) {
 	p := testutil.DB(t)
 	p.ExecErr = errors.New("boom")
 
-	UpsertArticle(1, &Article{Title: strings.Repeat("x", 300)}) // logs a warning
+	UpsertArticle(&Article{BotID: 1, Title: strings.Repeat("x", 300)}) // logs a warning
 
 	if calls := p.Execs(); len(calls) != 1 || len(calls[0].Args["title"].(string)) != 255 {
 		t.Errorf("execs = %+v", calls)

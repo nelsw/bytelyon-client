@@ -69,10 +69,10 @@ build: install ## generate code (jic) and build the executable
 
 ##@ Test
 test: banner install ## verbose richgo test; requires an .env file
-	@$(MAKE) ƒø name=rich
-	@godotenv -f .env richgo test -coverprofile=coverage.out -v ./...
+	@$(MAKE) ƒø name=test
+	@godotenv -f .env richgo test -coverprofile=.fart/coverage.out -v ./...
 	@gocovsh
-	@$(MAKE) ƒç name=rich
+	@$(MAKE) ƒç name=test
 
 ƒø:
 	@printf "\n\033[1;95m❯\033[0m %s [\033[1;95m%s\033[0m]\n" "∙∙∙" "${name}"

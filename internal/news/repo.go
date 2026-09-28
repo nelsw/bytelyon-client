@@ -6,7 +6,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func UpsertArticle(botID int, a *Article) {
+func UpsertArticle(a *Article) {
 	sql := `
 INSERT INTO articles (bot_id, url, title, published_at, img_alt, img_url, source, description, body, created_at, updated_at, publisher, keywords)
 VALUES (@bot_id, @url, @title, @published_at, @img_alt, @img_url, @source, @description, @body, NOW(), NOW(), @publisher, @keywords)
@@ -22,7 +22,7 @@ DO UPDATE SET title = excluded.title,
               updated_at = NOW()
 `
 	d := pgx.StrictNamedArgs{
-		"bot_id":       botID,
+		"bot_id":       a.BotID,
 		"url":          a.URL,
 		"title":        db.Varchar(a.Title, 255),
 		"published_at": a.PublishedAt(),

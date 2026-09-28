@@ -29,14 +29,6 @@ func (s Source) URL(query string) string {
 	return fmt.Sprintf("Unknown News Source %T", s)
 }
 
-type RSS struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel struct {
-		XMLName  xml.Name   `xml:"channel"`
-		Articles []*Article `xml:"item"`
-	} `xml:"channel"`
-}
-
 type Article struct {
 	XMLName   xml.Name `xml:"item" json:"-"`
 	Link      string   `xml:"link" json:"-"`
@@ -50,6 +42,7 @@ type Article struct {
 	Keywords  []string `json:"keywords"`
 	Publisher string   `json:"publisher"`
 	URL       string   `json:"url"`
+	BotID     int      `json:"bot_id"`
 }
 
 func (a *Article) MarshalZerologObject(evt *zerolog.Event) {

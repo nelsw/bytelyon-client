@@ -1,0 +1,112 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "cloakbrowser",
+#   "cloakbrowser[geoip]",
+#   "playwright",
+#   "structlog",
+# ]
+# ///
+import argparse
+import base64
+import gzip
+import json
+from urllib.parse import urldefrag
+
+from cloakbrowser import launch, ProxySettings
+from playwright.sync_api import Browser, Page, Error
+
+
+
+
+KEYWORD_ATTRS = ["property='article:tag'", "name='news_keywords'", "name='keywords'"]
+DESCRIPTION_ATTRS = ["name='description'", "property='og:description'", "name='twitter:description'", "name='abstract'"]
+IMG_ALT_ATTRS = ["property='og:image:alt'", "name='twitter:image:alt'"]
+IMG_SRC_ATTRS = ["name='image'", "property='og:image'", "property='og:image:secure_url'", "name='twitter:image'",
+                 "name='twitter:image:src'"]
+
+
+def collect_one_meta(page: Page, attrs: list[str]) -> str:
+    for attr in attrs:
+        try:
+            for elem in page.locator(f"meta[{attr}]").all():
+                text = elem.get_attribute('content', timeout=2_500)
+                if text is not None and text != "":
+                    return text
+        except TimeoutError:
+            pass
+    return ''
+
+
+def collect_body(page: Page) -> str:
+    text = []
+    for selector in ["article", "main", "body", "html"]:
+        if len(text) > 0:
+            break
+        if page.locator(selector).count() == 0:
+            continue
+        for p in page.locator(selector).locator("p").all():
+            txt = p.text_content()
+            if txt is not None:
+                txt = txt.strip()
+                if txt != "":
+                    text.append(txt.strip())
+    return "\n\n".join(text)
+
+
+def main(
+        url: str,
+        headless: bool,
+        proxy: ProxySettings | None,
+) -> None:
+
+    if proxy is not None:
+        browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
+    else:
+        browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
+
+    page = browser.new_page()
+    try:
+        page.goto(url=url)
+        page.wait_for_load_state('domcontentloaded', timeout=5_000)
+        print(json.dumps({
+            'error': '',
+            'body': collect_body(page),
+            'img_src': collect_one_meta(page, IMG_SRC_ATTRS),
+            'img_alt': collect_one_meta(page, IMG_ALT_ATTRS),
+            'description': collect_one_meta(page, DESCRIPTION_ATTRS),
+            'keywords': (collect_one_meta(page, KEYWORD_ATTRS)).split(','),
+        }))
+    except Error as e:
+        print(json.dumps({'error': e}))
+    finally:
+        page.close()
+        browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the pages 🤖")
+    _ = parser.add_argument('-u', '--url', help='Page URL')
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = None
+    if args.proxy_host != '':
+        proxy_val = ProxySettings(
+            username=args.proxy_user,
+            password=args.proxy_pass,
+            server=f"{args.proxy_scheme}://{args.proxy_host}:{args.proxy_port}",
+        )
+
+    main(
+        url=args.url,
+        headless=args.mode,
+        proxy=proxy_val,
+    )

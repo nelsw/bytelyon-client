@@ -60,19 +60,22 @@ DO UPDATE SET title = excluded.title,
 		log.Err(err).Msgf("failed to save page: %s", d)
 	} else {
 		log.Trace().Msgf("saved page: %s", d)
+		UpdateSitemap(pid)
 	}
 }
 
-func UpdateSitemap(id int, urls []string) {
-	sql := `
+func UpdateSitemap(id int, urls ...string) {
+	d := pgx.StrictNamedArgs{"id": id}
+	sql := ` UPDATE sitemaps SET updated_at = NOW() WHERE id = @id`
+
+	if len(urls) > 0 {
+		d["urls"] = urls
+		sql = `
 UPDATE sitemaps
 SET urls = @urls,
 updated_at = NOW()
 WHERE id = @id
 `
-	d := pgx.StrictNamedArgs{
-		"id":   id,
-		"urls": urls,
 	}
 
 	if err := db.Exec(sql, d); err != nil {

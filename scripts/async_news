@@ -1,0 +1,114 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "seleniumbase",
+#   "playwright",
+# ]
+# ///
+import asyncio
+import argparse
+import json
+import random
+from pathlib import Path
+from urllib.parse import urldefrag
+
+from seleniumbase import cdp_driver
+from playwright.async_api import async_playwright, Page, Error
+
+
+KEYWORD_ATTRS = ["property='article:tag'", "name='news_keywords'", "name='keywords'"]
+DESCRIPTION_ATTRS = ["name='description'", "property='og:description'", "name='twitter:description'", "name='abstract'"]
+IMG_ALT_ATTRS = ["property='og:image:alt'", "name='twitter:image:alt'"]
+IMG_SRC_ATTRS = ["name='image'", "property='og:image'", "property='og:image:secure_url'", "name='twitter:image'",
+                 "name='twitter:image:src'"]
+
+
+async def collect_one_meta(page: Page, attrs: list[str]) -> str:
+    for attr in attrs:
+        try:
+            for elem in await page.locator(f"meta[{attr}]").all():
+                text = await elem.get_attribute('content', timeout=2_500)
+                if text is not None and text != "":
+                    return text
+        except TimeoutError:
+            pass
+    return ''
+
+
+async def collect_body(page: Page) -> str:
+    text = []
+    for selector in ["article", "main", "body", "html"]:
+        if await page.locator(selector).count() == 0:
+            continue
+        for p in await page.locator(selector).locator("p").all():
+            txt = await p.text_content()
+            if txt is None:
+                continue
+            text.append(txt.strip())
+    out = " ".join(text)
+    out = out.replace(
+        "This is a modal window. Beginning of dialog window. Escape will cancel and close the window. End of dialog window.",
+        "",
+    )
+    return out
+
+
+async def handle(
+        url: str,
+        page:Page,
+) -> None:
+
+    await page.goto(url=url)
+    await page.wait_for_load_state('domcontentloaded', timeout=5_000)
+    print(json.dumps({
+        'body': await collect_body(page),
+        'img_src': await collect_one_meta(page, IMG_SRC_ATTRS),
+        'img_alt': await collect_one_meta(page, IMG_ALT_ATTRS),
+        'description': await collect_one_meta(page, DESCRIPTION_ATTRS),
+        'keywords': (await collect_one_meta(page, KEYWORD_ATTRS)).split(','),
+    }, indent=s))
+
+
+
+async def main(
+        url: str,
+        headless: bool,
+        proxy: str,
+) -> None:
+
+    driver = await cdp_driver.start_async(headless=headless, use_chromium=True, proxy=proxy)
+    endpoint_url = driver.get_endpoint_url()
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(endpoint_url)
+        page = browser.contexts[0].pages[0]
+        try:
+            await handle(url, page)
+        except Error as e:
+            print(json.dumps({'error': e}))
+        finally:
+            await page.close()
+            await browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the page 🤖")
+    _ = parser.add_argument('-u', '--url', help='Page URL', type=str)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = ''
+    if args.proxy_host != '':
+        proxy_val = f"{args.proxy_scheme}://{args.proxy_user}:{args.proxy_pass}@{args.proxy_host}:{args.proxy_port}"
+
+    asyncio.run(main(
+        url=args.url,
+        headless=args.mode,
+        proxy=proxy_val,
+    ))
