@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/bot"
 	"github.com/nelsw/bytelyon-client/internal/testutil"
 	"github.com/rs/zerolog"
@@ -57,7 +54,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func rss(items ...string) string {
+func rssXml(items ...string) string {
 	return `<rss><channel>` + strings.Join(items, "") + `</channel></rss>`
 }
 
@@ -125,12 +122,12 @@ func TestDecodeGoogleLink(t *testing.T) {
 	if got := decodeGoogleLink(googleLink); got != googleURL {
 		t.Fatalf("decodeGoogleLink() = %q, want %q", got, googleURL)
 	}
-	if cached, _ := m.Get(googleLink); cached != googleURL {
+	if cached, _ := m.DB(11).Get(googleLink); cached != googleURL {
 		t.Errorf("decoded url was not cached, got %q", cached)
 	}
 
 	// a cache hit skips the network entirely
-	_ = m.Set(googleLink, "https://cached.example")
+	_ = m.DB(11).Set(googleLink, "https://cached.example")
 	if got := decodeGoogleLink(googleLink); got != "https://cached.example" {
 		t.Errorf("decodeGoogleLink() = %q, want the cached url", got)
 	}
@@ -165,44 +162,42 @@ func TestDecodeGoogleLinkFailures(t *testing.T) {
 	}
 }
 
-// files writes the script output news.Fetch reads for the article at url.
-func files(t *testing.T, botID int, url string) {
-	t.Helper()
-	name := uuid.NewSHA1(uuid.NameSpaceURL, []byte(url)).String()
-	testutil.Files(t, filepath.Join(".storage", string(bot.NewsType), strconv.Itoa(botID), name), `{"body":"b"}`)
-}
-
 func TestFetch(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "pages", 0)
+	testutil.Script(t, "sync_news", 0)
 
 	now := time.Now().UTC()
 	fresh, stale := now.Format(time.RFC1123Z), now.Add(-48*time.Hour).Format(time.RFC1123)
 	testutil.Transport(t, &fake{
-		bing: rss(
+		bing: rssXml(
 			item(bingLink(bingURL), "Bing story", fresh, "Bing Pub"),
 			item(bingLink("https://example.com/old"), "Old story", stale, "Bing Pub"),
 			item(bingLink("https://example.com/spam"), "spam", fresh, "Bing Pub"),
 		),
-		google:  rss(item(googleLink, "Google story - Google Pub", fresh, "ignored")),
+		google:  rssXml(item(googleLink, "Google story - Google Pub", fresh, "ignored")),
 		article: articleOK,
 		batch:   batchOK,
 	})
-	files(t, 3, bingURL)
-	files(t, 3, googleURL)
+	testutil.Output(t, bingURL, `{"body":"b"}`)
+	testutil.Output(t, googleURL, `{"body":"b"}`)
 
 	var blacklist bot.Blacklist
 	_ = blacklist.Scan("spam")
 
 	Fetch(3, "golang", true, now.Add(-time.Hour), blacklist)
 
-	if got, want := testutil.Args(t, "pages"), "-t news -i 3 -m true -u "+bingURL+" "+googleURL; got != want {
-		t.Errorf("pages args = %q, want %q", got, want)
+	// the bot is marked as run once its last job finishes
+	testutil.Eventually(t, "article upserts", func() bool { return len(filter(p.Execs(), "UPDATE bots")) > 0 })
+	if got, want := testutil.Args(t, "sync_news"), "-m true -u "+bingURL+"\n-m true -u "+googleURL; got != want {
+		t.Errorf("sync_news args = %q, want %q", got, want)
+	}
+	if update := filter(p.Execs(), "UPDATE bots")[0]; update.Args["id"] != 3 {
+		t.Errorf("bot update = %+v", update)
 	}
 
-	calls := p.Execs()
+	calls := filter(p.Execs(), "INSERT INTO articles")
 	if len(calls) != 2 {
 		t.Fatalf("expected 2 article upserts, got %+v", calls)
 	}
@@ -222,25 +217,45 @@ func TestFetchPartialFailures(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Redis(t)
 	testutil.Workdir(t)
-	testutil.Script(t, "pages", 1)
+	testutil.Script(t, "sync_news", 1)
 
 	testutil.Transport(t, &fake{
 		bingCode: http.StatusInternalServerError,
-		google:   rss(item("https://news.google.com/rss/topics/x", "Untitled", time.Now().Format(time.RFC1123Z), "")),
+		google:   rssXml(item("https://news.google.com/rss/topics/x", "Untitled", time.Now().Format(time.RFC1123Z), "")),
 	})
 
 	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
 
-	// the undecodable google article is still saved (with an empty url) even though the script failed
-	if calls := p.Execs(); len(calls) != 1 || calls[0].Args["title"] != "Untitled" {
+	// the undecodable google article is still scraped (with an empty url), but only the bot is updated when the script fails
+	testutil.Eventually(t, "bot update", func() bool { return len(p.Execs()) > 0 })
+	if got := testutil.Args(t, "sync_news"); got != "-m false -u" {
+		t.Errorf("sync_news args = %q", got)
+	}
+	if calls := p.Execs(); len(calls) != 1 || !strings.Contains(calls[0].SQL, "UPDATE bots") || calls[0].Args["id"] != 3 {
 		t.Errorf("execs = %+v", calls)
+	}
+}
+
+func TestFetchInvalidOutput(t *testing.T) {
+	p := testutil.DB(t)
+	testutil.Redis(t)
+	testutil.Workdir(t)
+	testutil.Script(t, "sync_news", 0)
+	testutil.Transport(t, &fake{bing: rssXml(item(bingLink(bingURL), "Bing story", time.Now().Format(time.RFC1123Z), "Bing Pub")), google: rssXml()})
+	testutil.Output(t, bingURL, "not json")
+
+	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
+
+	testutil.Eventually(t, "bot update", func() bool { return len(p.Execs()) > 0 })
+	if calls := p.Execs(); len(calls) != 1 || !strings.Contains(calls[0].SQL, "UPDATE bots") {
+		t.Errorf("only the bot update expected for unparseable output: %+v", calls)
 	}
 }
 
 func TestFetchNothingNew(t *testing.T) {
 	p := testutil.DB(t)
 	testutil.Workdir(t)
-	testutil.Transport(t, &fake{bing: rss(), google: rss()})
+	testutil.Transport(t, &fake{bing: rssXml(), google: rssXml()})
 
 	Fetch(3, "golang", false, time.Time{}, bot.Blacklist{})
 
@@ -253,9 +268,19 @@ func TestUpsertArticleError(t *testing.T) {
 	p := testutil.DB(t)
 	p.ExecErr = errors.New("boom")
 
-	UpsertArticle(1, &Article{Title: strings.Repeat("x", 300)}) // logs a warning
+	UpsertArticle(&Article{BotID: 1, Title: strings.Repeat("x", 300)}) // logs a warning
 
 	if calls := p.Execs(); len(calls) != 1 || len(calls[0].Args["title"].(string)) != 255 {
 		t.Errorf("execs = %+v", calls)
 	}
+}
+
+// filter returns the calls whose SQL contains sql.
+func filter(calls []testutil.Call, sql string) (out []testutil.Call) {
+	for _, c := range calls {
+		if strings.Contains(c.SQL, sql) {
+			out = append(out, c)
+		}
+	}
+	return
 }

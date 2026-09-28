@@ -81,6 +81,25 @@ func TestConnectPanics(t *testing.T) {
 	}
 }
 
+func TestConnStr(t *testing.T) {
+	t.Setenv("POSTGRES_URL", "")
+	t.Setenv("DB_USER", "u")
+	t.Setenv("DB_PASS", "p")
+
+	t.Setenv("APP_ENV", "local")
+	if got, want := db.ConnStr(), "postgres://root:secret@127.0.0.1:5432/forge?sslmode=disable"; got != want {
+		t.Errorf("local connStr() = %q, want %q", got, want)
+	}
+	t.Setenv("APP_ENV", "prod")
+	if got, want := db.ConnStr(), "postgres://u:p@127.0.0.1:5432/forge?sslmode=disable"; got != want {
+		t.Errorf("prod connStr() = %q, want %q", got, want)
+	}
+	t.Setenv("POSTGRES_URL", "postgres://override")
+	if got := db.ConnStr(); got != "postgres://override" {
+		t.Errorf("POSTGRES_URL should take precedence, got %q", got)
+	}
+}
+
 func TestVarchar(t *testing.T) {
 	for _, tt := range []struct {
 		in   string

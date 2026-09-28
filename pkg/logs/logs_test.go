@@ -20,7 +20,7 @@ func TestInit(t *testing.T) {
 	Init()
 	Init() // idempotent
 
-	name := ".storage/logs/" + time.Now().UTC().Format(time.DateOnly) + ".log"
+	name := time.Now().UTC().Format(time.DateOnly) + ".log"
 	log.Info().Msg("to file")
 	if b, err := os.ReadFile(name); err != nil || !strings.Contains(string(b), "to file") {
 		t.Errorf("log file %s = %q, %v", name, b, err)

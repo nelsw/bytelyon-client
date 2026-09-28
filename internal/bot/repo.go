@@ -78,17 +78,17 @@ func FindAll() (arr []Model) {
 	return arr
 }
 
-func Update(m Model) {
+func Update(id int) {
 	sql := `
 UPDATE bots
 SET last_run_at = NOW()
 WHERE id = @id;
 `
-	if err := db.Exec(sql, pgx.StrictNamedArgs{"id": m.ID}); err != nil {
+	if err := db.Exec(sql, pgx.StrictNamedArgs{"id": id}); err != nil {
 		log.Warn().Err(err).Msg("failed to update bot")
 	}
 }
 
 func UpdateFn(m Model) func() {
-	return func() { Update(m) }
+	return func() { Update(m.ID) }
 }

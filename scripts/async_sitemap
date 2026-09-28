@@ -1,0 +1,103 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "seleniumbase",
+#   "playwright",
+# ]
+# ///
+import asyncio
+import argparse
+import json
+import random
+from pathlib import Path
+from urllib.parse import urldefrag
+
+from seleniumbase import cdp_driver
+from playwright.async_api import async_playwright, Page
+
+
+
+
+async def collect_links(page: Page) -> list[str]:
+    hrefs = await page.locator('a[href]').evaluate_all("""
+els => els.map(el => el.href.trim()).filter(s => s.startsWith('http'))
+""")
+    return sorted({urldefrag(href).url for href in hrefs})
+
+
+async def collect_all_meta(page: Page) -> dict[str, str | list[str]]:
+    pairs = await page.locator('meta[content]').evaluate_all("""
+els => els
+  .map(el => [
+      (el.getAttribute('name') || el.getAttribute('property') || el.getAttribute('http-equiv') || el.getAttribute('itemprop') || '').trim(),
+      (el.getAttribute('content') || '').trim(),
+  ])
+  .filter(([key, val]) => key !== '' && val !== '')
+""")
+    meta: dict[str, list[str]] = {}
+    for key, val in pairs:
+        vals = meta.setdefault(key, [])
+        if val not in vals:
+            vals.append(val)
+    return {key: vals[0] if len(vals) == 1 else vals for key, vals in meta.items()}
+
+
+
+async def handle(
+        url: str,
+        page:Page,
+) -> None:
+    await page.goto(url=url)
+    await page.wait_for_load_state('domcontentloaded', timeout=5_000)
+    screenshot = await page.screenshot(full_page=True)
+    print(json.dump({
+        'title': await page.title(),
+        'meta': await collect_all_meta(page),
+        'links': await collect_links(page),
+        'screenshot': base64.b64encode(gzip.compress(screenshot)).decode('utf-8'),
+    }, indent=2))
+
+
+
+async def main(
+        url: str,
+        headless: bool,
+        proxy: str,
+) -> None:
+
+    driver = await cdp_driver.start_async(headless=headless, use_chromium=True, proxy=proxy)
+    endpoint_url = driver.get_endpoint_url()
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(endpoint_url)
+        page = browser.contexts[0].pages[0]
+        try:
+            await handle(url, page)
+        except Error as e:
+            print(json.dumps({'error': e}))
+        finally:
+            await page.close()
+            await browser.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the async sitemap 🤖")
+    _ = parser.add_argument('-u', '--url', help='Page URL', type=str)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=lambda s: s.lower() == 'true', default=True)
+    _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
+    _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
+    _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
+    _ = parser.add_argument('-px', '--proxy_pass', type=str, default='')
+    _ = parser.add_argument('-pp', '--proxy_port', type=str, default='')
+    args = parser.parse_args()
+
+    proxy_val = ''
+    if args.proxy_host != '':
+        proxy_val = f"{args.proxy_scheme}://{args.proxy_user}:{args.proxy_pass}@{args.proxy_host}:{args.proxy_port}"
+
+    asyncio.run(main(
+        url=args.url,
+        headless=args.mode,
+        proxy=proxy_val,
+    ))

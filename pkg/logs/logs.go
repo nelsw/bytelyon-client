@@ -27,11 +27,8 @@ func Init() {
 		return
 	}
 	initd = true
-	const dir = ".storage/logs/"
 	var err error
-	if err = os.MkdirAll(dir, 0o755); err != nil {
-		panic(err)
-	} else if f, err = os.Create(dir + time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
+	if f, err = os.Create(time.Now().UTC().Format(time.DateOnly) + ".log"); err != nil {
 		panic(err)
 	}
 	log.Logger = MakeZerolog()

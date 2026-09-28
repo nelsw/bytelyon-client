@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/nelsw/bytelyon-client/pkg/cache"
@@ -109,10 +111,14 @@ func Workdir(t testing.TB) string {
 	return dir
 }
 
-// Script installs an executable ./scripts/<name> that records its arguments to <name>.args and exits with code.
+// Script installs an executable ./scripts/<name> that appends its arguments to <name>.args, prints the output
+// registered for its last argument (see Output), and exits with code.
 func Script(t testing.TB, name string, code int) {
 	t.Helper()
-	body := "#!/bin/sh\necho \"$@\" > \"" + name + ".args\"\nexit " + strconv.Itoa(code) + "\n"
+	body := "#!/bin/sh\necho \"$@\" >> \"" + name + ".args\"\n" +
+		"for last; do :; done\n" +
+		"cat \"$(printf %s \"$last\" | tr -c 'A-Za-z0-9' _).out\" 2>/dev/null\n" +
+		"exit " + strconv.Itoa(code) + "\n"
 	if err := os.MkdirAll("scripts", 0o755); err != nil {
 		t.Fatal(err)
 	} else if err = os.WriteFile(filepath.Join("scripts", name), []byte(body), 0o755); err != nil {
@@ -120,14 +126,40 @@ func Script(t testing.TB, name string, code int) {
 	}
 }
 
-// Args returns the arguments the named script was last invoked with.
+// Output registers what a Script prints to stdout when its last argument is arg.
+func Output(t testing.TB, arg, out string) {
+	t.Helper()
+	name := []byte(arg)
+	for i, c := range name {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			name[i] = '_'
+		}
+	}
+	if err := os.WriteFile(string(name)+".out", []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Args returns the arguments of every invocation of the named script, one sorted line per call.
 func Args(t testing.TB, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(name + ".args")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return strings.TrimSpace(string(b))
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	slices.Sort(lines)
+	return strings.Join(lines, "\n")
+}
+
+// Eventually polls cond until it holds, failing the test after 10 seconds.
+func Eventually(t testing.TB, what string, cond func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+	}
 }
 
 // Files writes the <path>.html, <path>.png, and <path>.json files a Playwright script would produce.

@@ -7,27 +7,48 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/nelsw/bytelyon-client/internal/testutil"
+	"github.com/nelsw/bytelyon-client/pkg/url"
 )
 
-// page writes the files the pages script would produce for url under sitemap id.
-func page(t *testing.T, id, url, json string) {
+func setup(t *testing.T, depth int, code int) *testutil.Pool {
 	t.Helper()
-	name := uuid.NewSHA1(uuid.NameSpaceURL, []byte(url)).String()
-	testutil.Files(t, filepath.Join(".storage", "sitemap", id, name), json)
+	p := testutil.DB(t)
+	testutil.Redis(t)
+	testutil.Workdir(t)
+	testutil.Script(t, "sync_sitemap", code)
+
+	orig := maxDepth
+	maxDepth = depth
+	t.Cleanup(func() { maxDepth = orig })
+	return p
 }
 
-func withDepth(t *testing.T, d int) {
-	orig := maxDepth
-	maxDepth = d
-	t.Cleanup(func() { maxDepth = orig })
+// filter returns the calls whose SQL contains s.
+func filter(calls []testutil.Call, s string) (out []testutil.Call) {
+	for _, c := range calls {
+		if strings.Contains(c.SQL, s) {
+			out = append(out, c)
+		}
+	}
+	return
+}
+
+// finished waits for the bot update that marks the crawl as done and returns every exec up to then.
+func finished(t *testing.T, p *testutil.Pool) []testutil.Call {
+	t.Helper()
+	testutil.Eventually(t, "bot update", func() bool { return len(filter(p.Execs(), "UPDATE bots")) > 0 })
+	calls := p.Execs()
+	if bots := filter(calls, "UPDATE bots"); len(bots) != 1 || bots[0].Args["id"] != 2 {
+		t.Errorf("bot updates = %+v, want one for bot 2", bots)
+	}
+	return calls
 }
 
 func TestFetchNoSitemap(t *testing.T) {
 	p := testutil.DB(t)
 
-	Fetch(0, 1, "example.com", true)
+	Fetch(1, 0, "example.com", true)
 
 	if len(p.Execs()) != 0 {
 		t.Error("nothing should be saved without a sitemap")
@@ -35,83 +56,86 @@ func TestFetchNoSitemap(t *testing.T) {
 }
 
 func TestFetchCrawl(t *testing.T) {
-	p := testutil.DB(t)
-	testutil.Workdir(t)
-	testutil.Script(t, "pages", 0)
-	withDepth(t, 1)
+	p := setup(t, 2, 0)
 
-	page(t, "8", "https://example.com", `{
+	testutil.Output(t, "https://example.com", `{
 		"title": "Home",
 		"meta": {"description": "d"},
-		"links": ["https://example.com/a", "https://www.example.com/b", "https://other.com/x", 42, "https://example.com/a"]
+		"links": ["https://example.com/a", "https://www.example.com/b", "https://other.com/x", "http://example.com/y"]
 	}`)
-	page(t, "8", "https://example.com/a", `{"title": "A", "links": ["https://example.com", "https://example.com/c"]}`)
-	page(t, "8", "https://www.example.com/b", `{"title": "B"}`)
+	// home was already visited, and /c is at depth 0, so its links aren't followed
+	testutil.Output(t, "https://example.com/a", `{"title": "A", "links": ["https://example.com", "https://example.com/c"]}`)
+	testutil.Output(t, "https://example.com/c", `{"title": "C", "links": ["https://example.com/d"]}`)
+	testutil.Output(t, "https://www.example.com/b", `{"title": "B"}`)
 
-	Fetch(8, 2, "example.com", false)
+	Fetch(2, 8, "example.com", false)
 
-	if got, want := testutil.Args(t, "pages"), "-t sitemap -i 8 -m false -u https://example.com/a https://www.example.com/b"; got != want {
-		t.Errorf("last pages args = %q, want %q", got, want)
+	calls := finished(t, p)
+	want := []string{"https://example.com", "https://example.com/a", "https://example.com/c", "https://www.example.com/b"}
+
+	updates := filter(calls, "UPDATE sitemaps")
+	if len(updates) != 1 || updates[0].Args["id"] != 8 {
+		t.Fatalf("sitemap updates = %+v, want exactly one", updates)
+	}
+	if got := updates[0].Args["urls"].([]string); !slices.Equal(got, want) {
+		t.Errorf("urls = %v, want %v", got, want)
 	}
 
-	calls := p.Execs()
-	if len(calls) != 4 {
-		t.Fatalf("expected 3 page upserts and 1 sitemap update, got %+v", calls)
+	var args []string
+	for _, u := range want {
+		args = append(args, "-m false -u "+u)
+	}
+	if got := testutil.Args(t, "sync_sitemap"); got != strings.Join(args, "\n") {
+		t.Errorf("sync_sitemap args = %q", got)
 	}
 
 	// pages are upserted concurrently, so order them by url
-	slices.SortFunc(calls[:3], func(a, b testutil.Call) int {
+	pages := filter(calls, "INSERT INTO pages")
+	slices.SortFunc(pages, func(a, b testutil.Call) int {
 		return strings.Compare(a.Args["url"].(string), b.Args["url"].(string))
 	})
 
-	var pages []string
-	for _, c := range calls[:3] {
-		if !strings.Contains(c.SQL, "INSERT INTO pages") || c.Args["pageable_id"] != 8 || c.Args["domain"] != "example.com" {
+	var urls []string
+	for _, c := range pages {
+		if c.Args["pageable_id"] != 8 || c.Args["domain"] != "example.com" {
 			t.Errorf("unexpected upsert: %+v", c)
 		}
-		pages = append(pages, c.Args["url"].(string))
+		urls = append(urls, c.Args["url"].(string))
 	}
-	if want := []string{"https://example.com", "https://example.com/a", "https://www.example.com/b"}; !slices.Equal(pages, want) {
-		t.Errorf("pages = %v, want %v", pages, want)
+	if !slices.Equal(urls, want) {
+		t.Fatalf("pages = %v, want %v", urls, want)
 	}
-	if home := calls[0].Args; home["title"] != "Home" || home["meta"].(map[string]any)["description"] != "d" {
+	if home := pages[0].Args; home["title"] != "Home" || home["meta"].(map[string]any)["description"] != "d" {
 		t.Errorf("home page args = %v", home)
 	}
-	if b := calls[2].Args; b["meta"] == nil || b["screenshot_key"] != filepath.Join("sitemap", "8", uuid.NewSHA1(uuid.NameSpaceURL, []byte("https://www.example.com/b")).String()+".png") {
+	if b := pages[3].Args; b["meta"] == nil || b["screenshot_key"] != filepath.Join("sitemap", "8", url.UUID("https://www.example.com/b")+".png") {
 		t.Errorf("page b args = %v", b)
 	}
-
-	update := calls[3]
-	if !strings.Contains(update.SQL, "UPDATE sitemaps") || update.Args["id"] != 8 {
-		t.Errorf("unexpected update: %+v", update)
-	}
-	want := []string{"https://example.com", "https://example.com/a", "https://example.com/c", "https://www.example.com/b"}
-	if got := update.Args["urls"].([]string); !slices.Equal(got, want) {
-		t.Errorf("urls = %v, want %v", got, want)
-	}
 }
 
-func TestFetchNegativeDepth(t *testing.T) {
-	p := testutil.DB(t)
-	withDepth(t, -1)
+func TestFetchFailures(t *testing.T) {
+	for name, tt := range map[string]struct {
+		code int
+		out  string
+	}{
+		"script fails":   {1, ""},
+		"invalid output": {0, "not json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := setup(t, 0, tt.code)
+			testutil.Output(t, "https://example.com", tt.out)
 
-	Fetch(8, 2, "example.com", false)
+			Fetch(2, 8, "example.com", false)
 
-	if calls := p.Execs(); len(calls) != 1 || len(calls[0].Args["urls"].([]string)) != 0 {
-		t.Errorf("only an empty sitemap update expected, got %+v", calls)
-	}
-}
-
-func TestFetchScriptFailure(t *testing.T) {
-	p := testutil.DB(t)
-	testutil.Workdir(t)
-	testutil.Script(t, "pages", 1)
-	withDepth(t, 0)
-
-	Fetch(8, 2, "example.com", false)
-
-	if calls := p.Execs(); len(calls) != 1 || !strings.Contains(calls[0].SQL, "UPDATE sitemaps") {
-		t.Errorf("only the sitemap update expected, got %+v", calls)
+			// the crawl still finishes, saving an empty sitemap
+			calls := finished(t, p)
+			if updates := filter(calls, "UPDATE sitemaps"); len(updates) != 1 || updates[0].Args["urls"] != nil {
+				t.Errorf("only a bare sitemap update expected, got %+v", calls)
+			}
+			if pages := filter(calls, "INSERT INTO pages"); len(pages) != 0 {
+				t.Errorf("no pages expected, got %+v", pages)
+			}
+		})
 	}
 }
 
@@ -120,7 +144,7 @@ func TestRepoErrors(t *testing.T) {
 	p.ExecErr = errors.New("boom")
 
 	UpsertPage(1, "d", "u", "t", "k", nil) // logs errors
-	UpdateSitemap(1, nil)
+	UpdateSitemap(1, []string{"u"})
 
 	if calls := p.Execs(); len(calls) != 2 || calls[0].Args["meta"] == nil {
 		t.Errorf("execs = %+v", calls)

@@ -1,83 +1,107 @@
 package play
 
 import (
-	"os"
+	"errors"
+	"os/exec"
+	"sync"
+	"sync/atomic"
 	"testing"
-
-	"github.com/nelsw/bytelyon-client/internal/bot"
-	"github.com/nelsw/bytelyon-client/internal/testutil"
+	"time"
 )
 
-func TestScripts(t *testing.T) {
-	testutil.Workdir(t)
-	testutil.Script(t, "pages", 0)
-	testutil.Script(t, "news", 0)
-	testutil.Script(t, "sync_search", 0)
-
-	if err := Pages(bot.SitemapType, 7, true, []string{"https://a.com", "https://b.com"}); err != nil {
-		t.Fatal(err)
-	} else if got, want := testutil.Args(t, "pages"), "-t sitemap -i 7 -m true -u https://a.com https://b.com"; got != want {
-		t.Errorf("pages args = %q, want %q", got, want)
-	}
-
-	if err := Pages(bot.NewsType, 9, false, []string{"https://n.com"}); err != nil {
-		t.Fatal(err)
-	} else if got, want := testutil.Args(t, "pages"), "-t news -i 9 -m false -u https://n.com"; got != want {
-		t.Errorf("pages args = %q, want %q", got, want)
-	}
-
-	if err := Search(3, "golang", true); err != nil {
-		t.Fatal(err)
-	} else if got, want := testutil.Args(t, "sync_search"), "-i 3 -q golang -m true"; got != want {
-		t.Errorf("sync_search args = %q, want %q", got, want)
-	}
+// job records how it was run; its name picks the queue, and cmd is the command it runs.
+type job struct {
+	name, cmd string
+	args      []string
+	valid     bool
+	validated atomic.Int32
+	done      chan struct{}
+	out       []byte
+	err       error
 }
 
-func TestScriptFailure(t *testing.T) {
-	testutil.Workdir(t)
-	testutil.Script(t, "sync_search", 1)
-
-	if err := Search(1, "q", true); err == nil {
-		t.Error("expected error from failing script")
-	}
-	if err := Pages(bot.NewsType, 9, true, nil); err == nil {
-		t.Error("expected error from missing script")
-	}
+func newJob(name, cmd string, valid bool, args ...string) *job {
+	return &job{name: name, cmd: cmd, args: args, valid: valid, done: make(chan struct{})}
 }
 
-func TestHandleFiles(t *testing.T) {
-	s3 := testutil.Isolate()
-	testutil.Workdir(t)
-	testutil.Files(t, ".storage/search/1/q", `{"title":"T","n":2}`)
-
-	srcKey, imgKey, data := HandleFiles(".storage/search/1/q")
-
-	if srcKey != "search/1/q.html" || imgKey != "search/1/q.png" {
-		t.Errorf("keys = %q, %q", srcKey, imgKey)
+func (j *job) Name() string       { return j.name }
+func (j *job) Args() []string     { return j.args }
+func (j *job) Success(out []byte) { j.out = out; close(j.done) }
+func (j *job) Failure(err error)  { j.err = err; close(j.done) }
+func (j *job) Validate() bool     { j.validated.Add(1); return j.valid }
+func (j *job) wait(t *testing.T) *job {
+	t.Helper()
+	select {
+	case <-j.done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%s did not run", j.name)
 	}
-	if data.Get("title") != "T" || data.Get("n") != float64(2) {
-		t.Errorf("data = %v", data)
-	}
-	for _, key := range []string{srcKey, imgKey} {
-		if _, ok := s3.Object(testutil.Bucket + "/" + key); !ok {
-			t.Errorf("%s was not uploaded", key)
+	return j
+}
+
+// commands runs every job's cmd in place of its name, so the queue routing can be tested with real commands.
+func commands(t *testing.T) {
+	t.Helper()
+	orig := command
+	command = func(p Playable) *exec.Cmd { return exec.Command(p.(*job).cmd, p.Args()...) }
+	t.Cleanup(func() { command = orig })
+}
+
+func TestPlay(t *testing.T) {
+	commands(t)
+	t.Cleanup(func() { // reopen the queues this test closes
+		closed = false
+		start()
+	})
+
+	// Go and It route to each queue by name, validating each job exactly once
+	for _, name := range []string{"./scripts/sync_x", "./scripts/async_x", "./scripts/x"} {
+		j := newJob(name, "echo", true, "hi")
+		Go(j)
+		if j.wait(t).err != nil || string(j.out) != "hi\n" || j.validated.Load() != 1 {
+			t.Errorf("Go(%s): out = %q, err = %v, validated %d times", name, j.out, j.err, j.validated.Load())
+		}
+
+		j = newJob(name, "false", true)
+		It(j)
+		var exit *exec.ExitError
+		if !errors.As(j.wait(t).err, &exit) || j.validated.Load() != 1 {
+			t.Errorf("It(%s): err = %v, validated %d times", name, j.err, j.validated.Load())
 		}
 	}
-	if _, err := os.Stat(".storage/search/1/q.html"); !os.IsNotExist(err) {
-		t.Error("html should be removed after upload")
-	}
-}
 
-func TestHandleFilesMissingOrInvalid(t *testing.T) {
-	testutil.Isolate()
-	testutil.Workdir(t)
-
-	if _, _, data := HandleFiles(".storage/none"); data == nil || !data.Empty() {
-		t.Errorf("missing json should yield empty data, got %v", data)
+	// invalid jobs are dropped
+	invalid := newJob("./scripts/sync_x", "echo", false)
+	Go(invalid)
+	It(invalid)
+	if invalid.validated.Load() != 2 {
+		t.Errorf("invalid job validated %d times, want 2", invalid.validated.Load())
 	}
 
-	testutil.Files(t, ".storage/bad", `{`)
-	if _, _, data := HandleFiles(".storage/bad"); data == nil || !data.Empty() {
-		t.Errorf("invalid json should yield empty data, got %v", data)
+	// Close waits for accepted jobs, then drops new ones; calling it again is a no-op
+	var slow []*job
+	for range 10 {
+		j := newJob("./scripts/sync_x", "sleep", true, "0.05")
+		slow = append(slow, j)
+		Go(j)
+	}
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(Close)
+	}
+	wg.Wait()
+	for _, j := range slow {
+		select {
+		case <-j.done:
+		default:
+			t.Fatal("Close returned before an accepted job finished")
+		}
+	}
+
+	late := newJob("./scripts/sync_x", "echo", true)
+	Go(late)
+	It(late)
+	if late.validated.Load() != 0 {
+		t.Error("jobs should be dropped, unvalidated, after Close")
 	}
 }

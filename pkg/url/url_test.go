@@ -69,3 +69,18 @@ func TestPath(t *testing.T) {
 		}
 	}
 }
+
+func TestUUID(t *testing.T) {
+	if a, b := UUID("https://a.com"), UUID("https://a.com"); a != b || len(a) != 36 {
+		t.Errorf("UUID() = %q, %q; want a stable uuid", a, b)
+	}
+	if UUID("https://a.com") == UUID("https://b.com") {
+		t.Error("different urls should have different uuids")
+	}
+}
+
+func TestSecure(t *testing.T) {
+	if !Secure("https://a.com") || Secure("http://a.com") || Secure("a.com") {
+		t.Error("Secure() should only accept https urls")
+	}
+}

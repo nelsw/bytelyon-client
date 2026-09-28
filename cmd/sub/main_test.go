@@ -40,7 +40,7 @@ func TestRun(t *testing.T) {
 
 	m.Publish("bots", "not json")
 	m.Publish("bots", `{"ID":0}`)
-	m.Publish("bots", `{"ID":9,"Type":"sitemap","Query":"example.com"}`)
+	m.Publish("bots", `{"id":9,"type":"search","query":"golang","child_id":5}`) // no script, so it fails fast
 
 	waitFor(t, "bot update", func() bool { return len(p.Execs()) == 1 })
 	if calls := p.Execs(); calls[0].Args["id"] != 9 {

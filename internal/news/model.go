@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelsw/bytelyon-client/pkg/emo"
 	"github.com/rs/zerolog"
 )
 
@@ -29,14 +30,6 @@ func (s Source) URL(query string) string {
 	return fmt.Sprintf("Unknown News Source %T", s)
 }
 
-type RSS struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel struct {
-		XMLName  xml.Name   `xml:"channel"`
-		Articles []*Article `xml:"item"`
-	} `xml:"channel"`
-}
-
 type Article struct {
 	XMLName   xml.Name `xml:"item" json:"-"`
 	Link      string   `xml:"link" json:"-"`
@@ -50,18 +43,19 @@ type Article struct {
 	Keywords  []string `json:"keywords"`
 	Publisher string   `json:"publisher"`
 	URL       string   `json:"url"`
+	BotID     int      `json:"bot_id"`
 }
 
 func (a *Article) MarshalZerologObject(evt *zerolog.Event) {
 	evt.Str("t", a.Title).
 		Str("#", a.URL).
 		Str("@", a.Date).
-		Str("d", a.Desc).
-		Str("s", a.Source).
+		Int("d", len(a.Desc)).
+		Str("s", strings.Split(a.Source, " ")[0]).
 		Str("p", a.Publisher).
-		Str("i", a.ImgURL).
-		Str("a", a.ImgAlt).
-		Any("k", a.Keywords).
+		Str("i", emo.Bool(a.ImgURL != "")).
+		Str("a", emo.Bool(a.ImgAlt != "")).
+		Int("k", len(a.Keywords)).
 		Int("b", len(a.Body))
 }
 

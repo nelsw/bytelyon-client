@@ -122,8 +122,8 @@ func TestPool(t *testing.T) {
 
 func TestRedis(t *testing.T) {
 	m := Redis(t)
-	cache.Put("k", "v")
-	if v, _ := m.Get("k"); v != "v" {
+	cache.SetStr("k", "v")
+	if v, _ := m.DB(11).Get("k"); v != "v" {
 		t.Errorf("value = %q", v)
 	}
 }
@@ -143,10 +143,14 @@ func TestFilesAndScripts(t *testing.T) {
 
 	Script(t, "ok", 0)
 	Script(t, "fail", 3)
-	if err := exec.Command("./scripts/ok", "-x", "y").Run(); err != nil {
-		t.Error(err)
+	Output(t, "https://a.com/y", "out")
+	if out, err := exec.Command("./scripts/ok", "-x", "https://a.com/y").Output(); err != nil || string(out) != "out" {
+		t.Errorf("out = %q, %v", out, err)
 	}
-	if got := Args(t, "ok"); got != "-x y" {
+	if out, err := exec.Command("./scripts/ok", "-x", "z").Output(); err != nil || len(out) != 0 {
+		t.Errorf("out = %q, %v", out, err)
+	}
+	if got := Args(t, "ok"); got != "-x https://a.com/y\n-x z" {
 		t.Errorf("args = %q", got)
 	}
 	var exit *exec.ExitError

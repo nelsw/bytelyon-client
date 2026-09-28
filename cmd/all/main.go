@@ -27,7 +27,6 @@ func main() {
 			app.HandleBots(bot.FindAll())
 		case <-quit:
 			tick.Stop()
-			app.Close()
 			return
 		}
 	}

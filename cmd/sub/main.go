@@ -17,17 +17,17 @@ func main() {
 	app.Init()
 	defer app.Close()
 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	go cache.Subscribe(func(payload string) {
 		var b bot.Model
 		if err := json.Unmarshal([]byte(payload), &b); err != nil {
 			log.Err(err).Msg("failed to unmarshal bot payload")
-			return
+			return // todo - sender
 		}
 		app.HandleBot(b)
 	})
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	app.Close()
 }

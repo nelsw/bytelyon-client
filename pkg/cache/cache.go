@@ -1,10 +1,11 @@
 package cache
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -14,41 +15,51 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const channel = "bots"
-
-var (
-	ctx    = context.Background()
-	client *redis.Client
-	mu     sync.Mutex
+const (
+	subCh  = "bots"
+	pubCh  = "evts"
+	pubSub = 10
+	store  = 11
 )
 
-// connect lazily creates the client on first use.
-func connect() *redis.Client {
+var (
+	exp = time.Hour * 6
+	ctx = context.Background()
+	rcm = map[int]*redis.Client{}
+	mu  sync.Mutex
+)
+
+// connect lazily creates the client for db on first use and reuses it thereafter.
+func connect(db int) *redis.Client {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if client != nil {
+	if client, ok := rcm[db]; ok {
 		return client
 	}
 
-	db, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
-	client = redis.NewClient(&redis.Options{
-		Addr:         os.Getenv("REDIS_ADDR"),
+	opt := redis.Options{
+		Addr:         cmp.Or(os.Getenv("REDIS_ADDR"), "127.0.0.1:6379"),
 		DB:           db,
 		ReadTimeout:  -1,
 		WriteTimeout: -1,
-		Dialer:       ssh.DialFunc(),
-	})
+	}
 
+	if os.Getenv("APP_ENV") == "prod" {
+		opt.Dialer = ssh.DialFunc()
+	}
+
+	client := redis.NewClient(&opt)
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Err(err).Str("addr", client.Options().Addr).Msg("redis ping failed")
 	}
+	rcm[db] = client
 	return client
 }
 
 // Subscribe calls fn with each message published to the bots channel until the client is closed.
 func Subscribe(fn func(payload string)) {
-	sub := connect().Subscribe(ctx, channel)
+	sub := connect(pubSub).Subscribe(ctx, subCh)
 	defer func(sub *redis.PubSub) {
 		if err := sub.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
 			log.Err(err).Send()
@@ -67,25 +78,65 @@ func Subscribe(fn func(payload string)) {
 	}
 }
 
-func Put(key string, val any) {
-	if err := connect().Set(ctx, key, val, 6*time.Hour).Err(); err != nil {
+func Publish(botID int, message string) {
+	connect(pubSub).Publish(ctx, pubCh, fmt.Sprintf(`{"id": %d, "message": "%s"}`, botID, message))
+}
+
+func Put(db int, key string, val any) {
+	if err := connect(db).Set(ctx, key, val, exp).Err(); err != nil {
 		log.Err(err).Send()
 	}
 }
 
-func Get(key string) (string, error) {
-	return connect().Get(ctx, key).Result()
+func SetStr(key string, val any) {
+	connect(store).Set(ctx, key, val, exp)
+}
+
+func GetStr(key string) (string, error) {
+	return connect(store).Get(ctx, key).Result()
+}
+
+func SetTime(key string, t time.Time) {
+	connect(store).Set(ctx, key, t.UnixMilli(), exp)
+}
+
+func GetTime(key string) time.Time {
+	val, err := connect(store).Get(ctx, key).Int64()
+	if err != nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(val)
+}
+
+func Keys(pattern string) []string {
+	vals, err := connect(store).Keys(ctx, pattern).Result()
+	if err != nil {
+		log.Err(err).Send()
+		return nil
+	}
+	return vals
+}
+
+func Del(key string) error {
+	return connect(store).Del(ctx, key).Err()
+}
+
+func Decr(key string) (int64, error) {
+	return connect(store).Decr(ctx, key).Result()
+}
+
+func Incr(key string) error {
+	return connect(store).Incr(ctx, key).Err()
 }
 
 func Close() {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if client == nil {
-		return
+	for db, client := range rcm {
+		if err := client.Close(); err != nil {
+			log.Err(err).Send()
+		}
+		delete(rcm, db)
 	}
-	if err := client.Close(); err != nil {
-		log.Err(err).Send()
-	}
-	client = nil
 }

@@ -3,6 +3,8 @@ package url
 import (
 	"net/url"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type Values url.Values
@@ -77,4 +79,12 @@ func Path(url string) (s string) {
 	_, s, _ = strings.Cut(url, "/")
 	s, _, _ = strings.Cut(s, "?")
 	return
+}
+
+func UUID(url string) string {
+	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(url)).String()
+}
+
+func Secure(url string) bool {
+	return strings.HasPrefix(url, "https://")
 }

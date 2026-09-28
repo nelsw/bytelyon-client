@@ -3,7 +3,6 @@ package sitemap
 import (
 	"github.com/jackc/pgx/v5"
 	"github.com/nelsw/bytelyon-client/pkg/db"
-	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog/log"
 )
 
@@ -46,7 +45,7 @@ DO UPDATE SET title = excluded.title,
 	if meta == nil {
 		meta = map[string]any{}
 	}
-	d := model.Data[string, any]{
+	d := map[string]any{
 		"domain":         domain,
 		"meta":           meta,
 		"pageable_id":    pid,
@@ -64,15 +63,17 @@ DO UPDATE SET title = excluded.title,
 }
 
 func UpdateSitemap(id int, urls []string) {
-	sql := `
+	d := pgx.StrictNamedArgs{"id": id}
+	sql := ` UPDATE sitemaps SET updated_at = NOW() WHERE id = @id`
+
+	if len(urls) > 0 {
+		d["urls"] = urls
+		sql = `
 UPDATE sitemaps
 SET urls = @urls,
 updated_at = NOW()
 WHERE id = @id
 `
-	d := pgx.StrictNamedArgs{
-		"id":   id,
-		"urls": urls,
 	}
 
 	if err := db.Exec(sql, d); err != nil {

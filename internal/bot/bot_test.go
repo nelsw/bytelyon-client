@@ -3,13 +3,11 @@ package bot
 import (
 	"bytes"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nelsw/bytelyon-client/internal/testutil"
-	"github.com/nelsw/bytelyon-client/pkg/model"
 	"github.com/rs/zerolog"
 )
 
@@ -41,6 +39,12 @@ func TestMarshalZerologObject(t *testing.T) {
 	}
 }
 
+func TestTypeString(t *testing.T) {
+	if typ := SearchType; typ.String() != "search" {
+		t.Errorf("String() = %q", typ.String())
+	}
+}
+
 func TestTypeScan(t *testing.T) {
 	for _, v := range []any{"news", "search", "sitemap"} {
 		var typ Type
@@ -51,27 +55,6 @@ func TestTypeScan(t *testing.T) {
 	var typ Type
 	if err := typ.Scan("other"); err == nil {
 		t.Error("expected error for unknown type")
-	}
-}
-
-func TestBlacklist(t *testing.T) {
-	var b Blacklist
-	if err := b.Scan(` Foo \nbar\n\nnull`); err != nil {
-		t.Fatal(err)
-	}
-	s := model.Set[string](b)
-	if got := s.Keys(); !slices.Equal(got, []string{"Foo", "bar"}) {
-		t.Errorf("keys = %v", got)
-	}
-	if b.OK([]string{"bar", "baz"}) {
-		t.Error("OK should reject blacklisted words")
-	}
-	if !b.OK([]string{"baz"}) {
-		t.Error("OK should accept other words")
-	}
-
-	if err := b.Scan(nil); err != nil || !b.OK([]string{"bar"}) {
-		t.Errorf("nil blacklist should allow everything, err = %v", err)
 	}
 }
 
@@ -148,7 +131,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	p.ExecErr = errors.New("boom")
-	Update(Model{ID: 5}) // logs a warning
+	Update(5) // logs a warning
 	if len(p.Execs()) != 2 {
 		t.Error("expected a second exec")
 	}

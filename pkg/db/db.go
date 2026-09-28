@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -26,6 +27,17 @@ var (
 	mu     sync.Mutex
 )
 
+func connStr() string {
+	if s := os.Getenv("POSTGRES_URL"); s != "" {
+		return s
+	}
+	u, p := "root", "secret"
+	if os.Getenv("APP_ENV") == "prod" {
+		u, p = os.Getenv("DB_USER"), os.Getenv("DB_PASS")
+	}
+	return fmt.Sprintf("postgres://%s:%s@127.0.0.1:5432/forge?sslmode=disable", u, p)
+}
+
 // connect lazily opens the pool on first use; like before, a misconfigured database is fatal.
 func connect() Pool {
 	mu.Lock()
@@ -37,11 +49,14 @@ func connect() Pool {
 
 	ctx := context.Background()
 
-	cfg, err := pgxpool.ParseConfig(os.Getenv("POSTGRES_URL"))
+	cfg, err := pgxpool.ParseConfig(connStr())
 	if err != nil {
 		panic(err)
 	}
-	cfg.ConnConfig.DialFunc = ssh.DialFunc()
+
+	if os.Getenv("APP_ENV") == "prod" {
+		cfg.ConnConfig.DialFunc = ssh.DialFunc()
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

@@ -9,6 +9,8 @@
 # ]
 # ///
 import argparse
+import base64
+import gzip
 import hashlib
 import json
 import random
@@ -17,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from cloakbrowser import launch, ProxySettings
-from playwright.sync_api import Browser, Page
+from playwright.sync_api import Browser, Page, Error
 
 _URL_CACHE: dict[str, tuple[float, str]] = {}
 _URL_CACHE_TTL_S = 1800  # 30 minutes
@@ -132,7 +134,6 @@ def _final_url(page: Page, link: str, timeout_ms: int) -> str:
 
 
 def handle(
-        path: str,
         query: str,
         page: Page,
 ) -> None:
@@ -141,16 +142,14 @@ def handle(
     page.locator('textarea[name="q"]').first.click()
     page.keyboard.type(query)
     page.keyboard.press('Enter')
-    page.wait_for_load_state('domcontentloaded', timeout=5_000)
-    page.wait_for_selector('#appbar')
 
-    # save page screenshot
-    page.screenshot(full_page=True, path=f"{path}/{query}.png")
+    try:
+        page.wait_for_selector('#botstuff')
+    except Error:
+        page.wait_for_load_state('domcontentloaded', timeout=5_000)
 
-    # save page content
-    with open(f"{path}/{query}.html", "w", encoding="utf-8") as file:
-        file.write(page.content())
-
+    screenshot = base64.b64encode(gzip.compress(page.screenshot(full_page=True))).decode('utf-8')
+    content = base64.b64encode(gzip.compress(page.content().encode("utf-8"))).decode('utf-8')
 
     raw = page.evaluate(r"""
 () => {
@@ -280,36 +279,43 @@ def handle(
         for i, value in enumerate(raw.get("similarQueries", []))
     ]
 
-    with open(f"{path}/{query}.json", "w", encoding="utf-8") as file:
-        json.dump({
+    print(json.dumps({
+        "content": content,
+        "screenshot": screenshot,
+        "data": {
             "sponsored_results": sponsored_results,
             "sponsored_products": sponsored_products,
             "organic_results": organic_results,
             "organic_products": organic_products,
             "similar_queries": similar_queries,
-        }, file, indent=4)
+        }
+    }))
 
 
 def main(
-        path: str,
         query: str,
         headless: bool,
         proxy: ProxySettings | None,
 ) -> None:
-    Path(path).mkdir(parents=True, exist_ok=True)
+
     if proxy is not None:
-        browser: Browser = launch(proxy=proxy, headless=headless, humanize=False, human_preset="careful", geoip=True)
+        browser: Browser = launch(headless=headless, human_preset="careful", geoip=True, humanize=False, proxy=proxy)
     else:
-        browser: Browser = launch(headless=headless, humanize=True, human_preset="careful", geoip=True)
-    handle(path, query, browser.new_page())
-    browser.close()
+        browser: Browser = launch(headless=headless, human_preset="careful", geoip=True, humanize=True)
+    page = browser.new_page()
+    try:
+        handle(query, page)
+    except Error as e:
+        print(json.dumps({'error': e}))
+    finally:
+        page.close()
+        browser.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the page 🤖")
-    _ = parser.add_argument('-i', '--id', type=int, default='')
+    parser = argparse.ArgumentParser(description="Run the search 🤖")
     _ = parser.add_argument('-q', '--query', help='Search Query', type=str)
-    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=bool, default=True)
+    _ = parser.add_argument('-m', '--mode', help='Headless or Headed browser', type=lambda s: s.lower() == 'true')
     _ = parser.add_argument('-ps', '--proxy_scheme', type=str, default='http')
     _ = parser.add_argument('-ph', '--proxy_host', type=str, default='')
     _ = parser.add_argument('-pu', '--proxy_user', type=str, default='')
@@ -327,7 +333,6 @@ if __name__ == "__main__":
         )
 
     main(
-        path=f".storage/search/{args.id}/{args.query}",
         query=args.query,
         headless=args.mode,
         proxy=proxy_val,

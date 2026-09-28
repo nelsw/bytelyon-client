@@ -52,7 +52,7 @@ lint: ## checks formats all go files
 ##@ Source
 clean: ## removes all files from .storage directories and clears the .bin folder
 	@$(MAKE) ƒø name=clean
-	@rm -rf ./bin/all ./bin/one ./bin/sub .storage/*/*
+	@rm -rf coverage.out *.log ./bin/*
 	@$(MAKE) ƒç name=clean
 install: clean ## gets and installs all deps for test/dev/prod before a tidy
 	@$(MAKE) ƒø name=deps
@@ -69,10 +69,10 @@ build: install ## generate code (jic) and build the executable
 
 ##@ Test
 test: banner install ## verbose richgo test; requires an .env file
-	@$(MAKE) ƒø name=rich
+	@$(MAKE) ƒø name=test
 	@godotenv -f .env richgo test -coverprofile=coverage.out -v ./...
 	@gocovsh
-	@$(MAKE) ƒç name=rich
+	@$(MAKE) ƒç name=test
 
 ƒø:
 	@printf "\n\033[1;95m❯\033[0m %s [\033[1;95m%s\033[0m]\n" "∙∙∙" "${name}"
